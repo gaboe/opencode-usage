@@ -93,3 +93,87 @@ export function filterByDays(
   }
   return filtered;
 }
+
+export function filterByDateRange(
+  dailyStats: Map<string, DailyStats>,
+  since?: string,
+  until?: string
+): Map<string, DailyStats> {
+  const filtered = new Map<string, DailyStats>();
+  for (const [date, stats] of dailyStats) {
+    if (since && date < since) continue;
+    if (until && date > until) continue;
+    filtered.set(date, stats);
+  }
+  return filtered;
+}
+
+function dateToMonth(date: string): string {
+  return date.slice(0, 7); // YYYY-MM
+}
+
+export function aggregateByMonth(
+  dailyStats: Map<string, DailyStats>
+): Map<string, DailyStats> {
+  const monthlyStats = new Map<string, DailyStats>();
+
+  for (const [date, stats] of dailyStats) {
+    const month = dateToMonth(date);
+
+    let monthStats = monthlyStats.get(month);
+    if (!monthStats) {
+      monthStats = {
+        date: month,
+        models: new Set(),
+        providers: new Set(),
+        providerStats: new Map(),
+        input: 0,
+        output: 0,
+        cacheWrite: 0,
+        cacheRead: 0,
+        reasoning: 0,
+        cost: 0,
+      };
+      monthlyStats.set(month, monthStats);
+    }
+
+    // Merge models and providers
+    for (const model of stats.models) monthStats.models.add(model);
+    for (const provider of stats.providers) monthStats.providers.add(provider);
+
+    // Sum totals
+    monthStats.input += stats.input;
+    monthStats.output += stats.output;
+    monthStats.cacheWrite += stats.cacheWrite;
+    monthStats.cacheRead += stats.cacheRead;
+    monthStats.reasoning += stats.reasoning;
+    monthStats.cost += stats.cost;
+
+    // Merge provider stats
+    for (const [providerId, providerStat] of stats.providerStats) {
+      let monthProviderStat = monthStats.providerStats.get(providerId);
+      if (!monthProviderStat) {
+        monthProviderStat = {
+          input: 0,
+          output: 0,
+          cacheWrite: 0,
+          cacheRead: 0,
+          reasoning: 0,
+          cost: 0,
+          models: new Set(),
+        };
+        monthStats.providerStats.set(providerId, monthProviderStat);
+      }
+      for (const model of providerStat.models)
+        monthProviderStat.models.add(model);
+      monthProviderStat.input += providerStat.input;
+      monthProviderStat.output += providerStat.output;
+      monthProviderStat.cacheWrite += providerStat.cacheWrite;
+      monthProviderStat.cacheRead += providerStat.cacheRead;
+      monthProviderStat.reasoning += providerStat.reasoning;
+      monthProviderStat.cost += providerStat.cost;
+    }
+  }
+
+  return monthlyStats;
+}

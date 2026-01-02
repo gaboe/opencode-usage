@@ -20,6 +20,93 @@ function padLeft(str: string, len: number): string {
   return str.padStart(len);
 }
 
+export type JsonOutput = {
+  periods: Array<{
+    date: string;
+    models: string[];
+    providers: Array<{
+      id: string;
+      models: string[];
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheWrite: number;
+      reasoning: number;
+      cost: number;
+    }>;
+    totals: {
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheWrite: number;
+      reasoning: number;
+      cost: number;
+    };
+  }>;
+  totals: {
+    input: number;
+    output: number;
+    cost: number;
+  };
+};
+
+export function renderJson(dailyStats: Map<string, DailyStats>): void {
+  const sortedDates = Array.from(dailyStats.keys()).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+  let totalInput = 0;
+  let totalOutput = 0;
+  let totalCost = 0;
+
+  const periods = sortedDates.map((date) => {
+    const stats = dailyStats.get(date)!;
+    const combinedInput = stats.input + stats.cacheRead + stats.cacheWrite;
+
+    totalInput += combinedInput;
+    totalOutput += stats.output;
+    totalCost += stats.cost;
+
+    const providers = Array.from(stats.providerStats.entries())
+      .sort((a, b) => b[1].cost - a[1].cost)
+      .map(([id, ps]) => ({
+        id,
+        models: Array.from(ps.models).sort(),
+        input: ps.input,
+        output: ps.output,
+        cacheRead: ps.cacheRead,
+        cacheWrite: ps.cacheWrite,
+        reasoning: ps.reasoning,
+        cost: Math.round(ps.cost * 100) / 100,
+      }));
+
+    return {
+      date,
+      models: Array.from(stats.models).sort(),
+      providers,
+      totals: {
+        input: stats.input,
+        output: stats.output,
+        cacheRead: stats.cacheRead,
+        cacheWrite: stats.cacheWrite,
+        reasoning: stats.reasoning,
+        cost: Math.round(stats.cost * 100) / 100,
+      },
+    };
+  });
+
+  const output: JsonOutput = {
+    periods,
+    totals: {
+      input: totalInput,
+      output: totalOutput,
+      cost: Math.round(totalCost * 100) / 100,
+    },
+  };
+
+  console.log(JSON.stringify(output, null, 2));
+}
+
 export function renderTable(dailyStats: Map<string, DailyStats>): void {
   const sortedDates = Array.from(dailyStats.keys()).sort((a, b) =>
     a.localeCompare(b)

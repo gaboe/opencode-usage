@@ -4,9 +4,10 @@ CLI tool for tracking [OpenCode](https://github.com/sst/opencode) AI coding assi
 
 ## Features
 
-- Daily usage breakdown with token counts and estimated costs
+- Daily or monthly usage breakdown with token counts and estimated costs
 - Provider breakdown (Anthropic, OpenAI, Google, etc.)
-- Filter by provider or time range
+- Filter by provider, date range, or relative time
+- JSON output for scripting and automation
 - Model pricing for accurate cost estimation
 - Terminal table output
 
@@ -27,7 +28,7 @@ npm install -g opencode-usage
 ## Usage
 
 ```bash
-# Show all usage data
+# Show all usage data (daily breakdown)
 opencode-usage
 
 # Filter by provider
@@ -38,8 +39,23 @@ opencode-usage -p openai
 opencode-usage --days 30
 opencode-usage -d 7
 
+# Date range filtering
+opencode-usage --since 20251201 --until 20251231
+opencode-usage --since 2025-12-01
+opencode-usage --since 7d      # last 7 days
+opencode-usage --since 1w      # last week
+opencode-usage --since 1m      # last month
+
+# Monthly aggregation
+opencode-usage --monthly
+opencode-usage -m --since 2025-01-01
+
+# JSON output (for scripting)
+opencode-usage --json
+opencode-usage --monthly --json > usage.json
+
 # Combine filters
-opencode-usage --provider anthropic --days 7
+opencode-usage --provider anthropic --since 7d --json
 ```
 
 ## Output
