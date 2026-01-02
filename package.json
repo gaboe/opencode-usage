@@ -27,7 +27,7 @@
     "url": "git+https://github.com/blogic-cz/opencode-usage.git"
   },
   "bin": {
-    "opencode-usage": "./dist/index.js"
+    "opencode-usage": "dist/index.js"
   },
   "files": [
     "dist"

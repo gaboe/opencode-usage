@@ -13,15 +13,15 @@ CLI tool for tracking [OpenCode](https://github.com/sst/opencode) AI coding assi
 ## Installation
 
 ```bash
-# Run directly with npx (no install needed)
-npx opencode-usage
-
-# Or with bunx (faster)
+# Run directly with bunx (recommended, faster)
 bunx opencode-usage
 
+# Or with npx
+npx opencode-usage
+
 # Or install globally
-npm install -g opencode-usage
 bun add -g opencode-usage
+npm install -g opencode-usage
 ```
 
 ## Usage
