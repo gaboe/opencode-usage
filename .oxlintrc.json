@@ -1,0 +1,7 @@
+{
+  "plugins": ["typescript", "unicorn"],
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-imports": "error"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "name": "opencode-usage",
+  "version": "0.1.0",
+  "description": "CLI tool for tracking OpenCode AI coding assistant usage and costs",
+  "keywords": [
+    "ai",
+    "anthropic",
+    "bun",
+    "claude",
+    "cli",
+    "cost",
+    "gpt",
+    "openai",
+    "opencode",
+    "tokens",
+    "tracking",
+    "usage"
+  ],
+  "homepage": "https://github.com/blogic-cz/opencode-usage#readme",
+  "bugs": {
+    "url": "https://github.com/blogic-cz/opencode-usage/issues"
+  },
+  "license": "MIT",
+  "author": "blogic-cz",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blogic-cz/opencode-usage.git"
+  },
+  "bin": {
+    "opencode-usage": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap && bun run build:types",
+    "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
+    "check": "bun check.ts",
+    "check:ci": "bun check.ts ci",
+    "ck:warmup": "bun run scripts/warmup-ck.ts",
+    "compile": "bun build --compile --minify ./src/index.ts --outfile opencode-usage",
+    "dev": "bun run ck:warmup & bun run ./src/index.ts",
+    "format": "bunx oxfmt",
+    "lint": "bunx oxlint -c ./.oxlintrc.json --deny-warnings",
+    "prepublishOnly": "bun run check && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
