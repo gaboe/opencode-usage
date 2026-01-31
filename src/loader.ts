@@ -16,12 +16,28 @@ export function getOpenCodeStoragePath(): string {
   return join(xdgDataHome, "opencode", "storage");
 }
 
+const BATCH_SIZE = 500;
+
 async function readJsonFile(filePath: string): Promise<MessageJson> {
   if (isBun) {
     return Bun.file(filePath).json() as Promise<MessageJson>;
   }
   const content = readFileSync(filePath, "utf-8");
   return JSON.parse(content) as MessageJson;
+}
+
+async function processInBatches<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  batchSize: number
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(fn));
+    results.push(...batchResults);
+  }
+  return results;
 }
 
 export async function loadMessages(
@@ -49,14 +65,16 @@ export async function loadMessages(
       }
     }
 
-    const results = await Promise.all(
-      filePaths.map(async (filePath) => {
+    const results = await processInBatches(
+      filePaths,
+      async (filePath) => {
         try {
           return await readJsonFile(filePath);
         } catch {
-          return null; // Skip invalid JSON files
+          return null;
         }
-      })
+      },
+      BATCH_SIZE
     );
 
     return results.filter((msg): msg is MessageJson => {
