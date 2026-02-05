@@ -8,6 +8,7 @@
  *   bunx opencode-usage --days 30
  *   bunx opencode-usage --since 20251201 --until 20251231
  *   bunx opencode-usage --monthly --json
+ *   bunx opencode-usage --watch
  */
 
 import { parseArgs } from "./cli.js";
@@ -20,9 +21,24 @@ import {
 } from "./aggregator.js";
 import { renderTable, renderJson } from "./renderer.js";
 
-async function main(): Promise<void> {
-  const { provider, days, since, until, json, monthly } = parseArgs();
-  const storagePath = getOpenCodeStoragePath();
+const WATCH_INTERVAL_MS = 5000;
+
+function clearScreen(): void {
+  process.stdout.write("\x1b[2J\x1b[H");
+}
+
+async function renderUsage(options: {
+  storagePath: string;
+  provider?: string;
+  days?: number;
+  since?: string;
+  until?: string;
+  json?: boolean;
+  monthly?: boolean;
+  watch?: boolean;
+}): Promise<void> {
+  const { storagePath, provider, days, since, until, json, monthly, watch } =
+    options;
 
   if (!json) {
     console.log(`\nLoading OpenCode usage data from: ${storagePath}`);
@@ -65,6 +81,39 @@ async function main(): Promise<void> {
     renderJson(stats);
   } else {
     renderTable(stats);
+    if (watch) {
+      console.log(
+        `[Watch mode] Refreshing every ${WATCH_INTERVAL_MS / 1000}s - Press Ctrl+C to exit`
+      );
+    }
+  }
+}
+
+async function main(): Promise<void> {
+  const { provider, days, since, until, json, monthly, watch } = parseArgs();
+  const storagePath = getOpenCodeStoragePath();
+
+  const options = {
+    storagePath,
+    provider,
+    days,
+    since,
+    until,
+    json,
+    monthly,
+    watch,
+  };
+
+  if (watch) {
+    const runWatch = async () => {
+      clearScreen();
+      await renderUsage(options);
+    };
+
+    await runWatch();
+    setInterval(runWatch, WATCH_INTERVAL_MS);
+  } else {
+    await renderUsage(options);
   }
 }
 

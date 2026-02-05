@@ -11,6 +11,7 @@ export type CliArgs = {
   until?: string;
   json?: boolean;
   monthly?: boolean;
+  watch?: boolean;
 };
 
 // Get CLI args - works with both Bun and Node.js
@@ -66,6 +67,7 @@ export function parseArgs(): CliArgs {
         until: { type: "string", short: "u" },
         json: { type: "boolean", short: "j" },
         monthly: { type: "boolean", short: "m" },
+        watch: { type: "boolean", short: "w" },
         help: { type: "boolean", short: "h" },
       },
       strict: true,
@@ -83,6 +85,7 @@ export function parseArgs(): CliArgs {
       until: parseDate(values.until ?? ""),
       json: values.json,
       monthly: values.monthly,
+      watch: values.watch,
     };
   } catch (error) {
     if (error instanceof Error && error.message.includes("Unknown option")) {
@@ -108,6 +111,7 @@ Options:
   -u, --until <date>      End date (YYYYMMDD, YYYY-MM-DD, or 7d/1w/1m)
   -j, --json              Output as JSON
   -m, --monthly           Aggregate by month instead of day
+  -w, --watch             Watch mode - refresh every 5 seconds
   -h, --help              Show this help message
 
 Examples:
@@ -117,5 +121,7 @@ Examples:
   bunx opencode-usage --since 20251201 --until 20251231
   bunx opencode-usage --since 7d
   bunx opencode-usage --monthly --json
+  bunx opencode-usage --watch
+  bunx opencode-usage -w -d 1
 `);
 }
