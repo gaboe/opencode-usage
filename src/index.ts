@@ -23,12 +23,12 @@ import { renderTable, renderJson } from "./renderer.js";
 
 const WATCH_INTERVAL_MS = 5 * 60 * 1000;
 
-function moveCursorHome(): void {
-  process.stdout.write("\x1b[H");
+function clearScreen(): void {
+  process.stdout.write("\x1b[2J\x1b[H");
 }
 
-function clearToEnd(): void {
-  process.stdout.write("\x1b[J");
+function homeThenClearBelow(): void {
+  process.stdout.write("\x1b[H\x1b[J");
 }
 
 async function renderUsage(options: {
@@ -110,14 +110,13 @@ async function main(): Promise<void> {
   };
 
   if (watch) {
-    const runWatch = async () => {
-      moveCursorHome();
-      await renderUsage(options);
-      clearToEnd();
-    };
+    clearScreen();
+    await renderUsage(options);
 
-    await runWatch();
-    setInterval(runWatch, WATCH_INTERVAL_MS);
+    setInterval(async () => {
+      homeThenClearBelow();
+      await renderUsage(options);
+    }, WATCH_INTERVAL_MS);
   } else {
     await renderUsage(options);
   }
