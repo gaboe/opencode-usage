@@ -21,10 +21,14 @@ import {
 } from "./aggregator.js";
 import { renderTable, renderJson } from "./renderer.js";
 
-const WATCH_INTERVAL_MS = 5000;
+const WATCH_INTERVAL_MS = 5 * 60 * 1000;
 
-function clearScreen(): void {
-  process.stdout.write("\x1b[2J\x1b[H");
+function moveCursorHome(): void {
+  process.stdout.write("\x1b[H");
+}
+
+function clearToEnd(): void {
+  process.stdout.write("\x1b[J");
 }
 
 async function renderUsage(options: {
@@ -82,8 +86,9 @@ async function renderUsage(options: {
   } else {
     renderTable(stats);
     if (watch) {
+      const now = new Date().toLocaleTimeString();
       console.log(
-        `[Watch mode] Refreshing every ${WATCH_INTERVAL_MS / 1000}s - Press Ctrl+C to exit`
+        `[Watch mode] Last update: ${now} | Refreshing every ${WATCH_INTERVAL_MS / 60000}min | Ctrl+C to exit`
       );
     }
   }
@@ -106,8 +111,9 @@ async function main(): Promise<void> {
 
   if (watch) {
     const runWatch = async () => {
-      clearScreen();
+      moveCursorHome();
       await renderUsage(options);
+      clearToEnd();
     };
 
     await runWatch();

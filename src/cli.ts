@@ -111,7 +111,7 @@ Options:
   -u, --until <date>      End date (YYYYMMDD, YYYY-MM-DD, or 7d/1w/1m)
   -j, --json              Output as JSON
   -m, --monthly           Aggregate by month instead of day
-  -w, --watch             Watch mode - refresh every 5 seconds
+  -w, --watch             Watch mode - refresh every 5 minutes
   -h, --help              Show this help message
 
 Examples:
