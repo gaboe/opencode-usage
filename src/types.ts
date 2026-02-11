@@ -83,12 +83,14 @@ export type CursorState = {
 /** Anthropic multi-account state file structure */
 export type MultiAccountState = {
   currentAccount?: string;
+  requestCount?: number;
   usage?: Record<
     string,
     {
-      session5h?: { utilization: number; reset: number };
-      weekly7d?: { utilization: number; reset: number };
-      weekly7dSonnet?: { utilization: number; reset: number };
+      session5h?: { utilization: number; reset: number; status?: string };
+      weekly7d?: { utilization: number; reset: number; status?: string };
+      weekly7dSonnet?: { utilization: number; reset: number; status?: string };
+      timestamp?: string;
     }
   >;
 };

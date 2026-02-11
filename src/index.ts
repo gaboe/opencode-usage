@@ -26,7 +26,7 @@ import {
   filterByDateRange,
 } from "./aggregator.js";
 import { renderTable, renderJson } from "./renderer.js";
-import { runDashboard } from "./dashboard.js";
+import { runSolidDashboard } from "./dashboard-solid.js";
 import type { CursorState, MessageJson } from "./types.js";
 import { loadConfig } from "./config.js";
 import { setCodexToken, showConfig } from "./config-commands.js";
@@ -136,11 +136,11 @@ async function main(): Promise<void> {
   const effectiveCodexToken = codexToken ?? configData.codexToken;
 
   if (dashboard) {
-    await runDashboard({
+    await runSolidDashboard({
       codexToken: effectiveCodexToken,
       refreshInterval: 300,
       providerFilter: provider,
-      daysFilter: days,
+      initialDays: days,
     });
     return;
   }

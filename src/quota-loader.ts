@@ -90,13 +90,13 @@ export async function loadMultiAccountQuota(): Promise<QuotaSnapshot[]> {
 
 /**
  * Load quota from antigravity accounts file
- * Path: ~/.local/share/opencode-antigravity/accounts.json
+ * Path: ~/.config/opencode/antigravity-accounts.json
  * Note: remainingFraction is inverted (0 = exhausted, 1 = full)
  */
 export async function loadAntigravityQuota(): Promise<QuotaSnapshot[]> {
   const path = join(
     homedir(),
-    ".local/share/opencode-antigravity/accounts.json"
+    ".config/opencode/antigravity-accounts.json"
   );
   const data = await readJsonFile<AntigravityAccountsFile>(path);
 

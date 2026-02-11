@@ -22,7 +22,7 @@ export function renderStatusBar(info: StatusInfo, width?: number): string {
   const lastUpdateStr = `Last update: ${formatTime(info.lastUpdate)}`;
   const intervalStr = `Refresh: ${info.refreshInterval}s`;
   const daysStr = info.daysFilter ? `Days: ${info.daysFilter}` : "Days: all";
-  const hints = "↑/↓: days | Ctrl+C: exit";
+  const hints = "t: today | w: week | m: month | a: all | Ctrl+C: exit";
 
   const leftPart = `${lastUpdateStr}  ${intervalStr}  ${daysStr}`;
   const padding = totalWidth - leftPart.length - hints.length;

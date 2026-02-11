@@ -25,7 +25,7 @@ describe("status-bar", () => {
       { lastUpdate: Date.now(), refreshInterval: 60 },
       80
     );
-    expect(output).toContain("Ctrl+C to exit");
+    expect(output).toContain("Ctrl+C: exit");
   });
 
   test("renderStatusBar should handle narrow widths", () => {
@@ -34,7 +34,7 @@ describe("status-bar", () => {
       40
     );
     expect(output).toContain("Last update:");
-    expect(output).toContain("Ctrl+C to exit");
+    expect(output).toContain("Ctrl+C: exit");
   });
 
   test("renderStatusBar should pad correctly for wide widths", () => {
@@ -43,7 +43,7 @@ describe("status-bar", () => {
       120
     );
     expect(output.length).toBeGreaterThanOrEqual(100);
-    expect(output).toContain("Ctrl+C to exit");
+    expect(output).toContain("Ctrl+C: exit");
   });
 
   test("renderStatusBar should use default width if not provided", () => {

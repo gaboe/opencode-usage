@@ -82,7 +82,7 @@ export function filterByDays(
   days: number
 ): Map<string, DailyStats> {
   const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - days);
+  cutoffDate.setDate(cutoffDate.getDate() - days + 1);
   const cutoffStr = cutoffDate.toISOString().split("T")[0];
 
   const filtered = new Map<string, DailyStats>();

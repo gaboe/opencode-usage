@@ -3,7 +3,7 @@
  */
 
 import { aggregateByDate, filterByDays } from "./aggregator.js";
-import type { CursorState, MessageJson, QuotaSnapshot } from "./types.js";
+import type { CursorState, MessageJson, QuotaSnapshot, DailyStats } from "./types.js";
 import {
   loadMessagesIncremental,
   createCursor,
@@ -86,22 +86,15 @@ function clearScreen(): void {
 
 function filterMessages(
   messages: MessageJson[],
-  options: DashboardOptions
+  providerFilter?: string
 ): MessageJson[] {
   let filtered = messages;
 
-  if (options.providerFilter) {
+  if (providerFilter) {
     filtered = filtered.filter(
       (msg) =>
-        msg.model?.providerID === options.providerFilter ||
-        msg.providerID === options.providerFilter
-    );
-  }
-
-  if (options.daysFilter) {
-    const cutoff = Date.now() - options.daysFilter * 24 * 60 * 60 * 1000;
-    filtered = filtered.filter(
-      (msg) => (msg.time?.created ?? 0) * 1000 >= cutoff
+        msg.model?.providerID === providerFilter ||
+        msg.providerID === providerFilter
     );
   }
 
@@ -112,17 +105,18 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   const refreshInterval = options.refreshInterval ?? 300;
   let cursor: CursorState = createCursor();
   let allMessages: MessageJson[] = [];
+  let cachedAggregatedStats: Map<string, DailyStats> = new Map();
   let isFirstRender = true;
   let currentDaysFilter = options.daysFilter ?? 30;
+  let needsReaggregate = true;
 
   const render = async () => {
-    clearScreen();
-
     const { width } = getTerminalSize();
     const storagePath = getOpenCodeStoragePath();
 
     if (isFirstRender) {
       allMessages = await loadMessages(storagePath, options.providerFilter);
+      needsReaggregate = true;
       isFirstRender = false;
     } else {
       const result = await loadMessagesIncremental(
@@ -131,14 +125,21 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
         options.providerFilter
       );
       cursor = result.cursor;
-      allMessages = [...allMessages, ...result.messages];
+      if (result.messages.length > 0) {
+        allMessages = [...allMessages, ...result.messages];
+        needsReaggregate = true;
+      }
     }
 
-    const filtered = filterMessages(allMessages, options);
-    let dailyStats = aggregateByDate(filtered);
-    
+    if (needsReaggregate) {
+      const filtered = filterMessages(allMessages, options.providerFilter);
+      cachedAggregatedStats = aggregateByDate(filtered);
+      needsReaggregate = false;
+    }
+
+    let dailyStats = cachedAggregatedStats;
     if (currentDaysFilter > 0) {
-      dailyStats = filterByDays(dailyStats, currentDaysFilter);
+      dailyStats = filterByDays(cachedAggregatedStats, currentDaysFilter);
     }
 
     const quotas = await fetchAllQuotas(options.codexToken);
@@ -158,6 +159,8 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       { lastUpdate: Date.now(), refreshInterval, daysFilter: currentDaysFilter },
       width
     );
+
+    clearScreen();
 
     if (sideBySide) {
       const usageLines = usageTable.split("\n");
@@ -193,13 +196,23 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
         process.exit(0);
       }
 
-      if (key === "\u001b[A") {
-        currentDaysFilter = Math.max(1, currentDaysFilter - 7);
+      if (key === "t") {
+        currentDaysFilter = 1;
         await render();
       }
 
-      if (key === "\u001b[B") {
-        currentDaysFilter = currentDaysFilter === 0 ? 30 : currentDaysFilter + 7;
+      if (key === "w") {
+        currentDaysFilter = 7;
+        await render();
+      }
+
+      if (key === "m") {
+        currentDaysFilter = 30;
+        await render();
+      }
+
+      if (key === "a") {
+        currentDaysFilter = 0;
         await render();
       }
     });

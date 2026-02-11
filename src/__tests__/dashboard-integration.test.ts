@@ -123,7 +123,7 @@ describe("dashboard-integration", () => {
 
     expect(statusBar).toContain("Last update:");
     expect(statusBar).toContain("Refresh: 300s");
-    expect(statusBar).toContain("Ctrl+C to exit");
+    expect(statusBar).toContain("Ctrl+C: exit");
   });
 
   test("stacked layout simulation (narrow terminal)", () => {

@@ -4,12 +4,20 @@
 
 import type { QuotaSnapshot } from "../types.js";
 
+function visibleLength(str: string): number {
+  return str.replace(/\x1b\[[0-9;]*m/g, "").length;
+}
+
 function padRight(str: string, len: number): string {
-  return str.padEnd(len);
+  const visible = visibleLength(str);
+  const padding = Math.max(0, len - visible);
+  return str + " ".repeat(padding);
 }
 
 function padLeft(str: string, len: number): string {
-  return str.padStart(len);
+  const visible = visibleLength(str);
+  const padding = Math.max(0, len - visible);
+  return " ".repeat(padding) + str;
 }
 
 function renderProgressBar(used: number, width: number): string {
@@ -52,11 +60,11 @@ export function renderQuotaPanel(
   width?: number
 ): string {
   const effectiveWidth = width ?? 70;
-  const labelWidth = 30;
-  const barWidth = 30;
+  const labelWidth = 35;
+  const barWidth = 35;
   const percentWidth = 5;
-  const resetWidth = 15;
-  const totalWidth = labelWidth + barWidth + percentWidth + resetWidth + 4;
+  const resetWidth = 22;
+  const totalWidth = labelWidth + barWidth + percentWidth + resetWidth + 6;
   
   const h = "─";
   const v = "│";

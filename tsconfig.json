@@ -9,6 +9,8 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "declaration": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid",
     "types": [
       "bun-types"
     ]

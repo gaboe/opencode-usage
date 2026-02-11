@@ -52,6 +52,82 @@ async function processInBatches<T, R>(
   return results;
 }
 
+export async function loadRecentMessages(
+  storagePath: string,
+  hoursBack: number = 24,
+  providerFilter?: string
+): Promise<MessageJson[]> {
+  const messagesDir = join(storagePath, "message");
+  const cutoffTime = Date.now() - hoursBack * 60 * 60 * 1000;
+
+  try {
+    const sessionDirs = await readdir(messagesDir);
+    const recentFiles: string[] = [];
+
+    for (const sessionDir of sessionDirs) {
+      const sessionPath = join(messagesDir, sessionDir);
+      try {
+        const sessionStat = await stat(sessionPath);
+        if (!sessionStat.isDirectory()) continue;
+        
+        if (sessionStat.mtimeMs < cutoffTime) {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+
+      const files = await readdir(sessionPath);
+      const fileStats = await Promise.all(
+        files.map(async (file) => {
+          if (!file.endsWith(".json")) return null;
+          const filePath = join(sessionPath, file);
+          try {
+            const fileStat = await stat(filePath);
+            return { filePath, mtime: fileStat.mtimeMs };
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      for (const fileInfo of fileStats) {
+        if (fileInfo && fileInfo.mtime >= cutoffTime) {
+          recentFiles.push(fileInfo.filePath);
+        }
+      }
+    }
+
+    const results = await processInBatches(
+      recentFiles,
+      async (filePath) => {
+        try {
+          return await readJsonFile(filePath);
+        } catch {
+          return null;
+        }
+      },
+      BATCH_SIZE
+    );
+
+    return results.filter((msg): msg is MessageJson => {
+      if (!msg) return false;
+      if (msg.role === "user") return false;
+      if (!msg.tokens) return false;
+
+      if (providerFilter) {
+        const providerId = msg.model?.providerID ?? msg.providerID ?? "unknown";
+        if (providerId.toLowerCase() !== providerFilter) return false;
+      }
+
+      return true;
+    });
+  } catch (err) {
+    console.error(`Error reading recent messages: ${err}`);
+    return [];
+  }
+}
+
 export async function loadMessages(
   storagePath: string,
   providerFilter?: string
