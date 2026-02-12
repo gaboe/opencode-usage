@@ -370,7 +370,7 @@ function QuotaPanel(props: {
                 </box>
 
                 <For each={groupByAccount()}>
-                  {([accountName, accountQuotas], accountIndex) => {
+                  {([accountName, accountQuotas], _accountIndex) => {
                     const isActive = accountName.includes("[ACTIVE]");
                     const cleanName = accountName
                       .replace(" [ACTIVE]", "")

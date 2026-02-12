@@ -5,6 +5,7 @@
 import type { QuotaSnapshot } from "../types.js";
 
 function visibleLength(str: string): number {
+  // eslint-disable-next-line no-control-regex
   return str.replace(/\u001b\[[0-9;]*m/g, "").length;
 }
 
