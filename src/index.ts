@@ -97,17 +97,8 @@ async function renderUsage(
 }
 
 async function main(): Promise<void> {
-  const {
-    provider,
-    days,
-    since,
-    until,
-    json,
-    monthly,
-    watch,
-    stats,
-    config,
-  } = parseArgs();
+  const { provider, days, since, until, json, monthly, watch, stats, config } =
+    parseArgs();
 
   if (config === "show") {
     await showConfig();

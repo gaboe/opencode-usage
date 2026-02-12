@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { loadCodexQuota, resolveCodexToken } from "../codex-client.js";
 import type { CodexUsageResponse } from "../types.js";
 

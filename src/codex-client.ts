@@ -77,9 +77,7 @@ export async function loadCodexQuota(token?: string): Promise<QuotaSnapshot[]> {
 
     if (!response.ok) {
       const hint =
-        response.status === 401
-          ? " (token expired? Run: codex login)"
-          : "";
+        response.status === 401 ? " (token expired? Run: codex login)" : "";
       return [
         {
           source: "codex",
