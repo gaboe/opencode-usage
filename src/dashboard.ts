@@ -29,43 +29,52 @@ export type DashboardOptions = {
 };
 
 async function fetchAllQuotas(): Promise<QuotaSnapshot[]> {
+  const [multiAccount, antigravity, codex] = await Promise.allSettled([
+    loadMultiAccountQuota(),
+    loadAntigravityQuota(),
+    loadCodexQuota(),
+  ]);
+
   const quotas: QuotaSnapshot[] = [];
 
-  try {
-    const multiAccount = await loadMultiAccountQuota();
-    quotas.push(...multiAccount);
-  } catch (err) {
-    quotas.push({
-      source: "anthropic",
-      label: "Multi-Account",
-      used: 0,
-      error: `Load error: ${err}`,
-    });
-  }
+  quotas.push(
+    ...(multiAccount.status === "fulfilled"
+      ? multiAccount.value
+      : [
+          {
+            source: "anthropic" as const,
+            label: "Multi-Account",
+            used: 0,
+            error: `Load error: ${multiAccount.reason}`,
+          },
+        ])
+  );
 
-  try {
-    const antigravity = await loadAntigravityQuota();
-    quotas.push(...antigravity);
-  } catch (err) {
-    quotas.push({
-      source: "antigravity",
-      label: "Antigravity",
-      used: 0,
-      error: `Load error: ${err}`,
-    });
-  }
+  quotas.push(
+    ...(antigravity.status === "fulfilled"
+      ? antigravity.value
+      : [
+          {
+            source: "antigravity" as const,
+            label: "Antigravity",
+            used: 0,
+            error: `Load error: ${antigravity.reason}`,
+          },
+        ])
+  );
 
-  try {
-    const codex = await loadCodexQuota();
-    quotas.push(...codex);
-  } catch (err) {
-    quotas.push({
-      source: "codex",
-      label: "Codex",
-      used: 0,
-      error: `Load error: ${err}`,
-    });
-  }
+  quotas.push(
+    ...(codex.status === "fulfilled"
+      ? codex.value
+      : [
+          {
+            source: "codex" as const,
+            label: "Codex",
+            used: 0,
+            error: `Load error: ${codex.reason}`,
+          },
+        ])
+  );
 
   return quotas;
 }
