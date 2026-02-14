@@ -87,13 +87,13 @@ opencode-usage --provider anthropic --since 7d --json
 
 ## How It Works
 
-This tool reads OpenCode session data from:
+This tool reads OpenCode session data from the SQLite database (`opencode.db`):
 
-- Linux: `~/.local/share/opencode/storage/`
-- macOS: `~/.local/share/opencode/storage/`
-- Windows: `%LOCALAPPDATA%/opencode/storage/`
+- Linux: `~/.local/share/opencode/opencode.db`
+- macOS: `~/.local/share/opencode/opencode.db`
+- Windows: `%LOCALAPPDATA%/opencode/opencode.db`
 
-It aggregates token usage by day and calculates estimated costs based on current API pricing.
+Requires OpenCode v1.2.0+ (SQLite storage). It aggregates token usage by day and calculates estimated costs based on current API pricing.
 
 ## Note on Costs
 

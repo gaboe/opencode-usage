@@ -6,7 +6,7 @@ CLI tool for tracking [OpenCode](https://github.com/sst/opencode) AI coding assi
 
 ### Tech Stack
 
-- **Runtime**: Bun (primary) + Node.js (fallback for npx)
+- **Runtime**: Bun (uses `bun:sqlite` for data loading)
 - **Language**: TypeScript
 - **Build**: Bun bundler + tsc for .d.ts
 - **Package Manager**: Bun
@@ -17,7 +17,7 @@ CLI tool for tracking [OpenCode](https://github.com/sst/opencode) AI coding assi
 src/
 ├── index.ts      # Entry point
 ├── cli.ts        # CLI argument parsing (node:util parseArgs)
-├── loader.ts     # Data loading (Bun.file with Node.js fallback)
+├── loader.ts     # Data loading (bun:sqlite from opencode.db)
 ├── aggregator.ts # Date/provider aggregation
 ├── renderer.ts   # Terminal table output
 ├── pricing.ts    # Model pricing config
@@ -36,23 +36,6 @@ bun run ck:warmup        # Index codebase for semantic search
 ```
 
 ## Code Guidelines
-
-### Dual Runtime Support
-
-This project must work with both **Bun** and **Node.js**. Always use runtime detection:
-
-```typescript
-// ✅ Good - Works with both runtimes
-const isBun = typeof globalThis.Bun !== "undefined";
-
-if (isBun) {
-  return Bun.file(filePath).json();
-}
-return JSON.parse(readFileSync(filePath, "utf-8"));
-
-// ❌ Bad - Bun-only (breaks npx)
-return Bun.file(filePath).json();
-```
 
 ### TypeScript Best Practices
 
@@ -76,9 +59,8 @@ All filenames must use **kebab-case**: `pricing-config.ts`, `date-utils.ts`
 ### Local Testing
 
 ```bash
-bun run dev --days 3           # Test with Bun
-bun run build && node dist/index.js --days 3  # Test with Node.js
-npm link && npx opencode-usage --days 3       # Test npx
+bun run dev --days 3           # Test from source
+bun run build && bun dist/index.js --days 3  # Test built output
 ```
 
 ### Publishing
@@ -108,7 +90,6 @@ git push --tags
 
 ## Important Reminders
 
-1. **Test both runtimes** after changes (Bun and Node.js)
-2. **Keep it simple** - this is a small CLI tool
-3. **Run build** before committing to verify it works
-4. **All markdown in English**
+1. **Keep it simple** - this is a small CLI tool
+2. **Run build** before committing to verify it works
+3. **All markdown in English**
