@@ -1,6 +1,6 @@
 {
   "name": "opencode-usage",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "CLI tool for tracking OpenCode AI coding assistant usage and costs",
   "keywords": [
     "ai",
@@ -16,15 +16,15 @@
     "tracking",
     "usage"
   ],
-  "homepage": "https://github.com/blogic-cz/opencode-usage#readme",
+  "homepage": "https://github.com/gaboe/opencode-usage#readme",
   "bugs": {
-    "url": "https://github.com/blogic-cz/opencode-usage/issues"
+    "url": "https://github.com/gaboe/opencode-usage/issues"
   },
   "license": "MIT",
-  "author": "blogic-cz",
+  "author": "gaboe",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/blogic-cz/opencode-usage.git"
+    "url": "git+https://github.com/gaboe/opencode-usage.git"
   },
   "bin": {
     "opencode-usage": "dist/index.js"
