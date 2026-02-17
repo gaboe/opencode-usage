@@ -34,7 +34,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.1.29"
 
       - name: Install dependencies
         run: bun install
@@ -76,7 +76,7 @@ jobs:
             git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..HEAD >> CHANGELOG.md
             echo "" >> CHANGELOG.md
             echo "" >> CHANGELOG.md
-            echo "**Full Changelog**: https://github.com/blogic-cz/opencode-usage/compare/${PREVIOUS_TAG}...${{ steps.tag.outputs.tag }}" >> CHANGELOG.md
+            echo "**Full Changelog**: https://github.com/gaboe/opencode-usage/compare/${PREVIOUS_TAG}...${{ steps.tag.outputs.tag }}" >> CHANGELOG.md
           fi
 
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
