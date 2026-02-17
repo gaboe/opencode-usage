@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type {
   QuotaSnapshot,
   MultiAccountState,
+  MultiAccountThresholds,
   AntigravityAccountsFile,
 } from "./types.js";
 
@@ -86,6 +87,46 @@ export async function loadMultiAccountQuota(): Promise<QuotaSnapshot[]> {
           error: "No usage data",
         },
       ];
+}
+
+function normalizeThresholds(
+  value:
+    | number
+    | { session5h?: number; weekly7d?: number; weekly7dSonnet?: number }
+    | undefined
+): MultiAccountThresholds {
+  if (typeof value === "number") {
+    return {
+      session5h: value,
+      weekly7d: value,
+      weekly7dSonnet: value,
+    };
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return {
+      session5h: value.session5h ?? 0.7,
+      weekly7d: value.weekly7d ?? 0.7,
+      weekly7dSonnet: value.weekly7dSonnet ?? 0.7,
+    };
+  }
+
+  return {
+    session5h: 0.7,
+    weekly7d: 0.7,
+    weekly7dSonnet: 0.7,
+  };
+}
+
+export async function loadMultiAccountThresholds(): Promise<MultiAccountThresholds | null> {
+  const path = join(
+    homedir(),
+    ".local/share/opencode/multi-account-state.json"
+  );
+  const state = await readJsonFile<MultiAccountState>(path);
+  if (!state) return null;
+
+  return normalizeThresholds(state.config?.threshold);
 }
 
 /**

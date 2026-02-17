@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { QuotaSnapshot, CodexUsageResponse } from "./types.js";
+import type {
+  QuotaSnapshot,
+  CodexThresholds,
+  CodexUsageResponse,
+} from "./types.js";
 
 const isBun = typeof globalThis.Bun !== "undefined";
 
@@ -49,6 +53,10 @@ type CodexMultiAuthAccount = {
 type CodexMultiAuthStore = {
   activeAlias?: string | null;
   accounts?: Record<string, CodexMultiAuthAccount>;
+  config?: {
+    stickyThresholdFiveHour?: number;
+    stickyThresholdWeekly?: number;
+  };
 };
 
 function getCodexMultiAuthStorePaths(): string[] {
@@ -145,6 +153,38 @@ async function loadCodexMultiAuthQuota(): Promise<QuotaSnapshot[] | null> {
       if (results.length > 0) {
         return results;
       }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function normalizeCodexThresholds(
+  value: CodexMultiAuthStore["config"]
+): CodexThresholds {
+  return {
+    fiveHour:
+      typeof value?.stickyThresholdFiveHour === "number"
+        ? value.stickyThresholdFiveHour
+        : 0.7,
+    weekly:
+      typeof value?.stickyThresholdWeekly === "number"
+        ? value.stickyThresholdWeekly
+        : 0.7,
+  };
+}
+
+export async function loadCodexThresholds(): Promise<CodexThresholds | null> {
+  for (const storePath of getCodexMultiAuthStorePaths()) {
+    try {
+      const content = isBun
+        ? await Bun.file(storePath).text()
+        : await readFile(storePath, "utf-8");
+      const store = JSON.parse(content) as CodexMultiAuthStore;
+      if (!store.accounts || Object.keys(store.accounts).length === 0) continue;
+      return normalizeCodexThresholds(store.config);
     } catch {
       continue;
     }

@@ -82,6 +82,15 @@ export type CursorState = {
 export type MultiAccountState = {
   currentAccount?: string;
   requestCount?: number;
+  config?: {
+    threshold?:
+      | number
+      | {
+          session5h?: number;
+          weekly7d?: number;
+          weekly7dSonnet?: number;
+        };
+  };
   usage?: Record<
     string,
     {
@@ -91,6 +100,17 @@ export type MultiAccountState = {
       timestamp?: string;
     }
   >;
+};
+
+export type MultiAccountThresholds = {
+  session5h: number;
+  weekly7d: number;
+  weekly7dSonnet: number;
+};
+
+export type CodexThresholds = {
+  fiveHour: number;
+  weekly: number;
 };
 
 /** Antigravity quota group */

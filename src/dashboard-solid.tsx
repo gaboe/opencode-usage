@@ -3,6 +3,8 @@ import { createSignal, onMount, For, Show } from "solid-js";
 import type {
   DailyStats,
   QuotaSnapshot,
+  CodexThresholds,
+  MultiAccountThresholds,
   MessageJson,
   CursorState,
 } from "./types.js";
@@ -14,8 +16,12 @@ import {
   createCursor,
   getOpenCodeStoragePath,
 } from "./loader.js";
-import { loadMultiAccountQuota, loadAntigravityQuota } from "./quota-loader.js";
-import { loadCodexQuota } from "./codex-client.js";
+import {
+  loadMultiAccountQuota,
+  loadMultiAccountThresholds,
+  loadAntigravityQuota,
+} from "./quota-loader.js";
+import { loadCodexQuota, loadCodexThresholds } from "./codex-client.js";
 
 type DashboardProps = {
   providerFilter?: string;
@@ -281,6 +287,8 @@ function QuotaPanel(props: {
   isSelected: boolean;
   width?: number | "auto" | `${number}%`;
   twoColumns?: boolean;
+  anthropicThresholds?: MultiAccountThresholds | null;
+  codexThresholds?: CodexThresholds | null;
 }) {
   const renderBar = (used: number, width: number = 30) => {
     const filled = Math.round(used * width);
@@ -366,9 +374,35 @@ function QuotaPanel(props: {
             return (
               <box flexDirection="column" paddingTop={0} flexShrink={0} gap={0}>
                 <box flexShrink={0} paddingTop={1} paddingBottom={0}>
-                  <text fg={COLORS.text.primary} flexShrink={0} wrapMode="none">
-                    <b>▸ {source.toUpperCase()}</b>
-                  </text>
+                  <box flexDirection="column" flexShrink={0}>
+                    <text
+                      fg={COLORS.text.primary}
+                      flexShrink={0}
+                      wrapMode="none"
+                    >
+                      <b>▸ {source.toUpperCase()}</b>
+                    </text>
+                    <Show
+                      when={source === "anthropic" && props.anthropicThresholds}
+                    >
+                      <text
+                        fg={COLORS.text.muted}
+                        flexShrink={0}
+                        wrapMode="none"
+                      >
+                        {`  thr 5h:${Math.round((props.anthropicThresholds?.session5h ?? 0.7) * 100)}%  w:${Math.round((props.anthropicThresholds?.weekly7d ?? 0.7) * 100)}%  s:${Math.round((props.anthropicThresholds?.weekly7dSonnet ?? 0.7) * 100)}%`}
+                      </text>
+                    </Show>
+                    <Show when={source === "codex" && props.codexThresholds}>
+                      <text
+                        fg={COLORS.text.muted}
+                        flexShrink={0}
+                        wrapMode="none"
+                      >
+                        {`  thr 5h:${Math.round((props.codexThresholds?.fiveHour ?? 0.7) * 100)}%  w:${Math.round((props.codexThresholds?.weekly ?? 0.7) * 100)}%`}
+                      </text>
+                    </Show>
+                  </box>
                 </box>
 
                 <For
@@ -571,6 +605,10 @@ function Dashboard(props: DashboardProps) {
     new Map()
   );
   const [quotas, setQuotas] = createSignal<QuotaSnapshot[]>([]);
+  const [anthropicThresholds, setAnthropicThresholds] =
+    createSignal<MultiAccountThresholds | null>(null);
+  const [codexThresholds, setCodexThresholds] =
+    createSignal<CodexThresholds | null>(null);
   const [cursor, setCursor] = createSignal<CursorState>(createCursor());
   const [isFirstLoad, setIsFirstLoad] = createSignal(true);
   const [isFullyLoaded, setIsFullyLoaded] = createSignal(false);
@@ -643,9 +681,12 @@ function Dashboard(props: DashboardProps) {
     const results: QuotaSnapshot[] = [];
 
     try {
+      const thresholds = await loadMultiAccountThresholds();
+      setAnthropicThresholds(thresholds);
       const multiAccount = await loadMultiAccountQuota();
       results.push(...multiAccount);
     } catch (err) {
+      setAnthropicThresholds(null);
       results.push({
         source: "anthropic",
         label: "Multi-Account",
@@ -667,9 +708,12 @@ function Dashboard(props: DashboardProps) {
     }
 
     try {
+      const codexThresholdConfig = await loadCodexThresholds();
+      setCodexThresholds(codexThresholdConfig);
       const codex = await loadCodexQuota();
       results.push(...codex);
     } catch (err) {
+      setCodexThresholds(null);
       results.push({
         source: "codex",
         label: "Codex",
@@ -783,13 +827,15 @@ function Dashboard(props: DashboardProps) {
           maxVisibleDays={maxVisibleDays()}
           isLoading={!isFullyLoaded()}
           isSelected={selectedPanel() === "usage"}
-          width={sideBySide() ? "42%" : "100%"}
+          width={sideBySide() ? "50%" : "100%"}
         />
         <QuotaPanel
           quotas={quotas()}
           isSelected={selectedPanel() === "quota"}
-          width={sideBySide() ? "58%" : "100%"}
+          width={sideBySide() ? "50%" : "100%"}
           twoColumns={quotaTwoColumns()}
+          anthropicThresholds={anthropicThresholds()}
+          codexThresholds={codexThresholds()}
         />
       </box>
 
