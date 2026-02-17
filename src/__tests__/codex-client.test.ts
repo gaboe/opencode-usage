@@ -1,16 +1,35 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { loadCodexQuota, resolveCodexToken } from "../codex-client.js";
 import type { CodexUsageResponse } from "../types.js";
+import { mkdir, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 describe("loadCodexQuota", () => {
   let originalFetch: typeof global.fetch;
+  let originalStoreFileEnv: string | undefined;
+
+  const testStorePath = join(
+    tmpdir(),
+    `opencode-usage-codex-store-${process.pid}.json`
+  );
 
   beforeEach(() => {
     originalFetch = global.fetch;
+    originalStoreFileEnv = process.env.OPENCODE_MULTI_AUTH_STORE_FILE;
+    delete process.env.OPENCODE_MULTI_AUTH_STORE_FILE;
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
+
+    if (originalStoreFileEnv === undefined) {
+      delete process.env.OPENCODE_MULTI_AUTH_STORE_FILE;
+    } else {
+      process.env.OPENCODE_MULTI_AUTH_STORE_FILE = originalStoreFileEnv;
+    }
+
+    return rm(testStorePath, { force: true });
   });
 
   function mockFetch(
@@ -210,5 +229,156 @@ describe("loadCodexQuota", () => {
     await loadCodexQuota("test-token");
 
     expect(capturedMethod).toBe("GET");
+  });
+
+  it("prefers codex-multi-auth store data when available", async () => {
+    await mkdir(join(tmpdir()), { recursive: true });
+    await writeFile(
+      testStorePath,
+      JSON.stringify({
+        activeAlias: "work",
+        accounts: {
+          work: {
+            email: "work@example.com",
+            rateLimits: {
+              fiveHour: {
+                limit: 100,
+                remaining: 40,
+                resetAt: 1707000000000,
+              },
+              weekly: {
+                limit: 100,
+                remaining: 75,
+                resetAt: 1707600000000,
+              },
+            },
+          },
+          backup: {
+            rateLimits: {
+              fiveHour: {
+                limit: 50,
+                remaining: 10,
+                resetAt: 1707100000000,
+              },
+            },
+          },
+        },
+      })
+    );
+
+    process.env.OPENCODE_MULTI_AUTH_STORE_FILE = testStorePath;
+
+    let fetchCalled = false;
+    mockFetch(async () => {
+      fetchCalled = true;
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    const result = await loadCodexQuota();
+
+    expect(fetchCalled).toBe(false);
+    expect(result).toEqual([
+      {
+        source: "codex",
+        label: "work [ACTIVE] - 5h Limit",
+        used: 0.6,
+        resetAt: 1707000000,
+      },
+      {
+        source: "codex",
+        label: "work [ACTIVE] - Weekly",
+        used: 0.25,
+        resetAt: 1707600000,
+      },
+      {
+        source: "codex",
+        label: "backup - 5h Limit",
+        used: 0.8,
+        resetAt: 1707100000,
+      },
+    ]);
+  });
+
+  it("uses explicit token flow even when codex-multi-auth store exists", async () => {
+    await writeFile(
+      testStorePath,
+      JSON.stringify({
+        activeAlias: "work",
+        accounts: {
+          work: {
+            rateLimits: {
+              fiveHour: { limit: 10, remaining: 9, resetAt: 1707000000000 },
+            },
+          },
+        },
+      })
+    );
+
+    process.env.OPENCODE_MULTI_AUTH_STORE_FILE = testStorePath;
+
+    mockFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: {
+                used_percent: 45,
+                reset_at: 1707000000,
+              },
+            },
+          }),
+          { status: 200 }
+        )
+    );
+
+    const result = await loadCodexQuota("explicit-token");
+
+    expect(result).toEqual([
+      {
+        source: "codex",
+        label: "Codex - 5h Limit",
+        used: 0.45,
+        resetAt: 1707000000,
+      },
+    ]);
+  });
+
+  it("shows account rows even when codex-multi-auth limits are not populated yet", async () => {
+    await writeFile(
+      testStorePath,
+      JSON.stringify({
+        activeAlias: "work",
+        accounts: {
+          work: {},
+          backup: {},
+        },
+      })
+    );
+
+    process.env.OPENCODE_MULTI_AUTH_STORE_FILE = testStorePath;
+
+    let fetchCalled = false;
+    mockFetch(async () => {
+      fetchCalled = true;
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+
+    const result = await loadCodexQuota();
+
+    expect(fetchCalled).toBe(false);
+    expect(result).toEqual([
+      {
+        source: "codex",
+        label: "work [ACTIVE]",
+        used: 0,
+        error: "No limit data yet",
+      },
+      {
+        source: "codex",
+        label: "backup",
+        used: 0,
+        error: "No limit data yet",
+      },
+    ]);
   });
 });

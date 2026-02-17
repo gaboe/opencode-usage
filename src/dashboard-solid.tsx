@@ -280,6 +280,7 @@ function QuotaPanel(props: {
   quotas: QuotaSnapshot[];
   isSelected: boolean;
   width?: number | "auto" | `${number}%`;
+  twoColumns?: boolean;
 }) {
   const renderBar = (used: number, width: number = 30) => {
     const filled = Math.round(used * width);
@@ -293,7 +294,7 @@ function QuotaPanel(props: {
     return COLORS.accent.teal;
   };
 
-  const formatResetTime = (resetAt?: number) => {
+  const formatResetTime = (resetAt?: number, compact: boolean = false) => {
     if (!resetAt) return "";
     const resetDate = new Date(resetAt * 1000);
     const now = new Date();
@@ -310,15 +311,17 @@ function QuotaPanel(props: {
     const mins = resetDate.getMinutes().toString().padStart(2, "0");
 
     if (resetDate >= today && resetDate < tomorrow) {
-      return `↻ today ${hours}:${mins}`;
+      return compact ? `↻ ${hours}:${mins}` : `↻ today ${hours}:${mins}`;
     }
     if (resetDate >= tomorrow && resetDate < dayAfter) {
-      return `↻ tomorrow ${hours}:${mins}`;
+      return compact ? `↻ tmr ${hours}:${mins}` : `↻ tomorrow ${hours}:${mins}`;
     }
 
     const day = resetDate.getDate().toString().padStart(2, "0");
     const month = (resetDate.getMonth() + 1).toString().padStart(2, "0");
-    return `↻ ${day}.${month}. ${hours}:${mins}`;
+    return compact
+      ? `↻ ${day}.${month}`
+      : `↻ ${day}.${month}. ${hours}:${mins}`;
   };
 
   const groupedQuotas = () => {
@@ -368,98 +371,146 @@ function QuotaPanel(props: {
                   </text>
                 </box>
 
-                <For each={groupByAccount()}>
-                  {([accountName, accountQuotas], _accountIndex) => {
-                    const isActive = accountName.includes("[ACTIVE]");
-                    const cleanName = accountName
-                      .replace(" [ACTIVE]", "")
-                      .trim();
+                <For
+                  each={(() => {
+                    const entries = groupByAccount();
+                    if (!props.twoColumns) {
+                      return entries.map((entry) => [entry]);
+                    }
+                    const rows: Array<Array<(typeof entries)[number]>> = [];
+                    for (let i = 0; i < entries.length; i += 2) {
+                      rows.push(entries.slice(i, i + 2));
+                    }
+                    return rows;
+                  })()}
+                >
+                  {(row) => (
+                    <box
+                      flexDirection={props.twoColumns ? "row" : "column"}
+                      gap={props.twoColumns ? 1 : 0}
+                    >
+                      <For each={row}>
+                        {([accountName, accountQuotas]) => {
+                          const isActive = accountName.includes("[ACTIVE]");
+                          const cleanName = accountName
+                            .replace(" [ACTIVE]", "")
+                            .trim();
 
-                    return (
-                      <box
-                        flexDirection="column"
-                        flexShrink={0}
-                        marginBottom={0}
-                        paddingTop={0}
-                        paddingBottom={0}
-                        paddingLeft={1}
-                        paddingRight={1}
-                        marginLeft={0}
-                        marginRight={0}
-                        border
-                        borderStyle="rounded"
-                        borderColor={isActive ? "#14b8a6" : "#334155"}
-                      >
-                        <box paddingBottom={0} flexShrink={0}>
-                          <text flexShrink={0} wrapMode="none">
-                            {isActive ? (
-                              <>
-                                <span
-                                  style={{ fg: COLORS.accent.teal, bold: true }}
-                                >
-                                  ● {cleanName}
-                                </span>
-                                <span style={{ fg: COLORS.accent.teal }}>
-                                  {" "}
-                                  (ACTIVE)
-                                </span>
-                              </>
-                            ) : (
-                              <span
-                                style={{ fg: COLORS.text.primary, bold: true }}
-                              >
-                                {cleanName}
-                              </span>
-                            )}
-                          </text>
-                        </box>
+                          return (
+                            <box
+                              flexDirection="column"
+                              flexShrink={0}
+                              marginBottom={0}
+                              paddingTop={0}
+                              paddingBottom={0}
+                              paddingLeft={1}
+                              paddingRight={1}
+                              marginLeft={0}
+                              marginRight={0}
+                              border
+                              borderStyle="rounded"
+                              borderColor={isActive ? "#14b8a6" : "#334155"}
+                              width={props.twoColumns ? "50%" : undefined}
+                            >
+                              <box paddingBottom={0} flexShrink={0}>
+                                <text flexShrink={0} wrapMode="none">
+                                  {isActive ? (
+                                    <>
+                                      <span
+                                        style={{
+                                          fg: COLORS.accent.teal,
+                                          bold: true,
+                                        }}
+                                      >
+                                        ● {cleanName}
+                                      </span>
+                                      <span style={{ fg: COLORS.accent.teal }}>
+                                        {" "}
+                                        (ACTIVE)
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span
+                                      style={{
+                                        fg: COLORS.text.primary,
+                                        bold: true,
+                                      }}
+                                    >
+                                      {cleanName}
+                                    </span>
+                                  )}
+                                </text>
+                              </box>
 
-                        <For each={accountQuotas}>
-                          {(quota) => {
-                            const displayLabel = quota.label
-                              .replace(accountName, "")
-                              .replace(/^[\s-]+/, "")
-                              .trim();
+                              <For each={accountQuotas}>
+                                {(quota) => {
+                                  const rawDisplayLabel = quota.label
+                                    .replace(accountName, "")
+                                    .replace(/^[\s-]+/, "")
+                                    .trim();
+                                  const displayLabel =
+                                    rawDisplayLabel || "Status";
 
-                            return (
-                              <Show
-                                when={!quota.error}
-                                fallback={
-                                  <box paddingLeft={1} flexShrink={0}>
-                                    <text fg={COLORS.accent.red}>
-                                      ✗ {displayLabel}: {quota.error}
-                                    </text>
-                                  </box>
-                                }
-                              >
-                                <box paddingLeft={1} flexShrink={0}>
-                                  <text wrapMode="none">
-                                    <span style={{ fg: COLORS.text.secondary }}>
-                                      {padRight(displayLabel, 15)}
-                                    </span>
-                                    <span style={{ fg: getColor(quota.used) }}>
-                                      {renderBar(quota.used, 20)}
-                                    </span>
-                                    <span style={{ fg: COLORS.text.primary }}>
-                                      {" "}
-                                      {padLeft(
-                                        (quota.used * 100).toFixed(0) + "%",
-                                        4
-                                      )}
-                                    </span>
-                                    <span style={{ fg: COLORS.text.muted }}>
-                                      {" "}
-                                      {formatResetTime(quota.resetAt)}
-                                    </span>
-                                  </text>
-                                </box>
-                              </Show>
-                            );
-                          }}
-                        </For>
-                      </box>
-                    );
-                  }}
+                                  const compact = Boolean(props.twoColumns);
+                                  const labelWidth = compact ? 12 : 15;
+                                  const barWidth = compact ? 14 : 20;
+
+                                  return (
+                                    <Show
+                                      when={!quota.error}
+                                      fallback={
+                                        <box paddingLeft={1} flexShrink={0}>
+                                          <text fg={COLORS.accent.red}>
+                                            ✗ {displayLabel}: {quota.error}
+                                          </text>
+                                        </box>
+                                      }
+                                    >
+                                      <box paddingLeft={1} flexShrink={0}>
+                                        <text wrapMode="none">
+                                          <span
+                                            style={{
+                                              fg: COLORS.text.secondary,
+                                            }}
+                                          >
+                                            {padRight(displayLabel, labelWidth)}
+                                          </span>
+                                          <span
+                                            style={{ fg: getColor(quota.used) }}
+                                          >
+                                            {renderBar(quota.used, barWidth)}
+                                          </span>
+                                          <span
+                                            style={{ fg: COLORS.text.primary }}
+                                          >
+                                            {" "}
+                                            {padLeft(
+                                              (quota.used * 100).toFixed(0) +
+                                                "%",
+                                              4
+                                            )}
+                                          </span>
+                                          <span
+                                            style={{ fg: COLORS.text.muted }}
+                                          >
+                                            {" "}
+                                            {formatResetTime(
+                                              quota.resetAt,
+                                              compact
+                                            )}
+                                          </span>
+                                        </text>
+                                      </box>
+                                    </Show>
+                                  );
+                                }}
+                              </For>
+                            </box>
+                          );
+                        }}
+                      </For>
+                    </box>
+                  )}
                 </For>
               </box>
             );
@@ -709,6 +760,7 @@ function Dashboard(props: DashboardProps) {
   });
 
   const sideBySide = () => dimensions().width >= 168;
+  const quotaTwoColumns = () => dimensions().width >= 150;
 
   return (
     <box
@@ -731,12 +783,13 @@ function Dashboard(props: DashboardProps) {
           maxVisibleDays={maxVisibleDays()}
           isLoading={!isFullyLoaded()}
           isSelected={selectedPanel() === "usage"}
-          width={sideBySide() ? undefined : "100%"}
+          width={sideBySide() ? "42%" : "100%"}
         />
         <QuotaPanel
           quotas={quotas()}
           isSelected={selectedPanel() === "quota"}
-          width={sideBySide() ? undefined : "100%"}
+          width={sideBySide() ? "58%" : "100%"}
+          twoColumns={quotaTwoColumns()}
         />
       </box>
 
