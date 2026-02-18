@@ -1,6 +1,6 @@
 {
   "name": "opencode-usage",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "CLI tool for tracking OpenCode AI coding assistant usage and costs",
   "keywords": [
     "ai",
@@ -57,8 +57,8 @@
     "prepublishOnly": "bun run check && bun run build"
   },
   "dependencies": {
-    "@opentui/core": "^0.1.78",
-    "@opentui/solid": "^0.1.79",
+    "@opentui/core": "0.1.78",
+    "@opentui/solid": "0.1.78",
     "solid-js": "^1.9.11"
   },
   "devDependencies": {
