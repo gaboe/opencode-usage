@@ -7,8 +7,20 @@ import { join } from "node:path";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 
+const multiAccountPath = join(
+  homedir(),
+  ".config",
+  "opencode",
+  "anthropic-multi-account-state.json"
+);
+const legacyMultiAccountPath = join(
+  homedir(),
+  ".local",
+  "share",
+  "opencode",
+  "multi-account-state.json"
+);
 const testDir = join(homedir(), ".local/share");
-const multiAccountPath = join(testDir, "opencode/multi-account-state.json");
 const antigravityPath = join(testDir, "opencode-antigravity/accounts.json");
 
 async function setupTestFile(path: string, data: unknown) {
@@ -29,6 +41,7 @@ describe("quota-loader", () => {
   describe("loadMultiAccountQuota", () => {
     afterEach(async () => {
       await cleanupTestFile(multiAccountPath);
+      await cleanupTestFile(legacyMultiAccountPath);
     });
 
     it("loads quota from multi-account state file", async () => {

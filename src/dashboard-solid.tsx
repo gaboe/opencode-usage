@@ -51,6 +51,12 @@ const COLORS = {
 
 const padLeft = (str: string, width: number) => str.padStart(width, " ");
 const padRight = (str: string, width: number) => str.padEnd(width, " ");
+const truncateText = (str: string, width: number) => {
+  if (width <= 0) return "";
+  if (str.length <= width) return str;
+  if (width <= 3) return str.slice(0, width);
+  return `${str.slice(0, width - 3)}...`;
+};
 
 function UsageTable(props: {
   stats: Map<string, DailyStats>;
@@ -142,7 +148,7 @@ function UsageTable(props: {
       border
       borderStyle="single"
       borderColor={props.isSelected ? COLORS.accent.teal : COLORS.border}
-      width={props.width ?? "50%"}
+      width={props.width ?? "49%"}
       height="auto"
       flexGrow={1}
       backgroundColor={COLORS.bg.secondary}
@@ -307,7 +313,7 @@ function QuotaPanel(props: {
     const resetDate = new Date(resetAt * 1000);
     const now = new Date();
 
-    if (resetDate <= now) return "⟳ resetting...";
+    if (resetDate <= now) return compact ? "⟳ reset" : "⟳ resetting...";
 
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const tomorrow = new Date(today);
@@ -346,7 +352,7 @@ function QuotaPanel(props: {
       border
       borderStyle="single"
       borderColor={props.isSelected ? COLORS.accent.teal : COLORS.border}
-      width={props.width ?? "50%"}
+      width={props.width ?? "49%"}
       height="auto"
       flexGrow={1}
       backgroundColor={COLORS.bg.secondary}
@@ -429,6 +435,9 @@ function QuotaPanel(props: {
                           const cleanName = accountName
                             .replace(" [ACTIVE]", "")
                             .trim();
+                          const displayAccountName = props.twoColumns
+                            ? truncateText(cleanName, isActive ? 15 : 22)
+                            : cleanName;
 
                           return (
                             <box
@@ -444,7 +453,7 @@ function QuotaPanel(props: {
                               border
                               borderStyle="rounded"
                               borderColor={isActive ? "#14b8a6" : "#334155"}
-                              width={props.twoColumns ? "50%" : undefined}
+                              width={props.twoColumns ? "49%" : undefined}
                             >
                               <box paddingBottom={0} flexShrink={0}>
                                 <text flexShrink={0} wrapMode="none">
@@ -456,7 +465,7 @@ function QuotaPanel(props: {
                                           bold: true,
                                         }}
                                       >
-                                        ● {cleanName}
+                                        ● {displayAccountName}
                                       </span>
                                       <span style={{ fg: COLORS.accent.teal }}>
                                         {" "}
@@ -470,7 +479,7 @@ function QuotaPanel(props: {
                                         bold: true,
                                       }}
                                     >
-                                      {cleanName}
+                                      {displayAccountName}
                                     </span>
                                   )}
                                 </text>
@@ -486,8 +495,24 @@ function QuotaPanel(props: {
                                     rawDisplayLabel || "Status";
 
                                   const compact = Boolean(props.twoColumns);
-                                  const labelWidth = compact ? 12 : 15;
-                                  const barWidth = compact ? 14 : 20;
+                                  const labelWidth = compact ? 10 : 15;
+                                  const barWidth = compact ? 10 : 20;
+                                  const displayLabelText = compact
+                                    ? truncateText(displayLabel, labelWidth)
+                                    : displayLabel;
+                                  const resetText = formatResetTime(
+                                    quota.resetAt,
+                                    compact
+                                  );
+                                  const compactResetText = compact
+                                    ? truncateText(resetText, 8)
+                                    : resetText;
+                                  const errorText = compact
+                                    ? truncateText(
+                                        `${displayLabel}: ${quota.error ?? "Error"}`,
+                                        28
+                                      )
+                                    : `${displayLabel}: ${quota.error}`;
 
                                   return (
                                     <Show
@@ -495,7 +520,7 @@ function QuotaPanel(props: {
                                       fallback={
                                         <box paddingLeft={1} flexShrink={0}>
                                           <text fg={COLORS.accent.red}>
-                                            ✗ {displayLabel}: {quota.error}
+                                            ✗ {errorText}
                                           </text>
                                         </box>
                                       }
@@ -507,7 +532,10 @@ function QuotaPanel(props: {
                                               fg: COLORS.text.secondary,
                                             }}
                                           >
-                                            {padRight(displayLabel, labelWidth)}
+                                            {padRight(
+                                              displayLabelText,
+                                              labelWidth
+                                            )}
                                           </span>
                                           <span
                                             style={{ fg: getColor(quota.used) }}
@@ -528,10 +556,7 @@ function QuotaPanel(props: {
                                             style={{ fg: COLORS.text.muted }}
                                           >
                                             {" "}
-                                            {formatResetTime(
-                                              quota.resetAt,
-                                              compact
-                                            )}
+                                            {compactResetText}
                                           </span>
                                         </text>
                                       </box>
@@ -827,12 +852,12 @@ function Dashboard(props: DashboardProps) {
           maxVisibleDays={maxVisibleDays()}
           isLoading={!isFullyLoaded()}
           isSelected={selectedPanel() === "usage"}
-          width={sideBySide() ? "50%" : "100%"}
+          width={sideBySide() ? "49%" : "100%"}
         />
         <QuotaPanel
           quotas={quotas()}
           isSelected={selectedPanel() === "quota"}
-          width={sideBySide() ? "50%" : "100%"}
+          width={sideBySide() ? "49%" : "100%"}
           twoColumns={quotaTwoColumns()}
           anthropicThresholds={anthropicThresholds()}
           codexThresholds={codexThresholds()}

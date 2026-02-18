@@ -9,6 +9,14 @@ import type {
 } from "./types.js";
 
 const isBun = typeof globalThis.Bun !== "undefined";
+const ANTHROPIC_MULTI_ACCOUNT_STATE_PATH = join(
+  homedir(),
+  ".config/opencode/anthropic-multi-account-state.json"
+);
+const ANTHROPIC_MULTI_ACCOUNT_STATE_LEGACY_PATH = join(
+  homedir(),
+  ".local/share/opencode/multi-account-state.json"
+);
 
 /**
  * Helper to read JSON file (dual runtime support)
@@ -24,16 +32,21 @@ async function readJsonFile<T>(filePath: string): Promise<T | null> {
   }
 }
 
-/**
- * Load quota from anthropic-multi-account state file
- * Path: ~/.local/share/opencode/multi-account-state.json
- */
+async function readJsonFileFromPaths<T>(
+  filePaths: string[]
+): Promise<T | null> {
+  for (const filePath of filePaths) {
+    const data = await readJsonFile<T>(filePath);
+    if (data !== null) return data;
+  }
+  return null;
+}
+
 export async function loadMultiAccountQuota(): Promise<QuotaSnapshot[]> {
-  const path = join(
-    homedir(),
-    ".local/share/opencode/multi-account-state.json"
-  );
-  const state = await readJsonFile<MultiAccountState>(path);
+  const state = await readJsonFileFromPaths<MultiAccountState>([
+    ANTHROPIC_MULTI_ACCOUNT_STATE_PATH,
+    ANTHROPIC_MULTI_ACCOUNT_STATE_LEGACY_PATH,
+  ]);
 
   if (!state?.usage) {
     return [
@@ -119,11 +132,10 @@ function normalizeThresholds(
 }
 
 export async function loadMultiAccountThresholds(): Promise<MultiAccountThresholds | null> {
-  const path = join(
-    homedir(),
-    ".local/share/opencode/multi-account-state.json"
-  );
-  const state = await readJsonFile<MultiAccountState>(path);
+  const state = await readJsonFileFromPaths<MultiAccountState>([
+    ANTHROPIC_MULTI_ACCOUNT_STATE_PATH,
+    ANTHROPIC_MULTI_ACCOUNT_STATE_LEGACY_PATH,
+  ]);
   if (!state) return null;
 
   return normalizeThresholds(state.config?.threshold);

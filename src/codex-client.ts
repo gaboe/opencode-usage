@@ -11,13 +11,25 @@ const isBun = typeof globalThis.Bun !== "undefined";
 
 const CODEX_API_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_AUTH_PATH = join(homedir(), ".codex", "auth.json");
-const CODEX_MULTI_AUTH_DEFAULT_STORE_PATH = join(
+const CODEX_MULTI_AUTH_STORE_PATH = join(
+  homedir(),
+  ".config",
+  "opencode",
+  "codex-multi-account-accounts.json"
+);
+const CODEX_MULTI_AUTH_LEGACY_STORE_PATH = join(
+  homedir(),
+  ".config",
+  "opencode",
+  "codex-multi-accounts.json"
+);
+const CODEX_MULTI_AUTH_OLDER_STORE_PATH = join(
   homedir(),
   ".config",
   "oc-codex-multi-account",
   "accounts.json"
 );
-const CODEX_MULTI_AUTH_LEGACY_STORE_PATH = join(
+const CODEX_MULTI_AUTH_OLDEST_STORE_PATH = join(
   homedir(),
   ".config",
   "opencode-multi-auth",
@@ -64,11 +76,19 @@ function getCodexMultiAuthStorePaths(): string[] {
   if (explicitFile) return [explicitFile];
 
   const explicitDir = process.env[CODEX_MULTI_AUTH_STORE_DIR_ENV]?.trim();
-  if (explicitDir) return [join(explicitDir, "accounts.json")];
+  if (explicitDir) {
+    return [
+      join(explicitDir, "codex-multi-account-accounts.json"),
+      join(explicitDir, "codex-multi-accounts.json"),
+      join(explicitDir, "accounts.json"),
+    ];
+  }
 
   return [
-    CODEX_MULTI_AUTH_DEFAULT_STORE_PATH,
+    CODEX_MULTI_AUTH_STORE_PATH,
     CODEX_MULTI_AUTH_LEGACY_STORE_PATH,
+    CODEX_MULTI_AUTH_OLDER_STORE_PATH,
+    CODEX_MULTI_AUTH_OLDEST_STORE_PATH,
   ];
 }
 
