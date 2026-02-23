@@ -182,10 +182,10 @@ function UsageTable(props: {
         </box>
 
         <box
-          padding-top={1}
-          padding-bottom={1}
+          paddingTop={1}
+          paddingBottom={1}
           border-bottom
-          border-color={COLORS.border}
+          borderColor={COLORS.border}
         >
           <text fg={COLORS.text.muted} wrapMode="none">
             <b>
@@ -205,9 +205,9 @@ function UsageTable(props: {
             return (
               <>
                 <box
-                  padding-top={0.5}
-                  padding-bottom={providers.length > 0 ? 0.25 : 0.5}
-                  background-color={
+                  paddingTop={0.5}
+                  paddingBottom={providers.length > 0 ? 0.25 : 0.5}
+                  backgroundColor={
                     isEven ? COLORS.bg.secondary : COLORS.bg.accent
                   }
                 >
@@ -229,10 +229,10 @@ function UsageTable(props: {
                     const isLastProvider = pIndex() === providers.length - 1;
                     return (
                       <box
-                        padding-top={0.25}
-                        padding-bottom={isLastProvider ? 0.5 : 0.25}
-                        padding-left={2}
-                        background-color={
+                        paddingTop={0.25}
+                        paddingBottom={isLastProvider ? 0.5 : 0.25}
+                        paddingLeft={2}
+                        backgroundColor={
                           isEven ? COLORS.bg.secondary : COLORS.bg.accent
                         }
                       >
@@ -258,7 +258,7 @@ function UsageTable(props: {
                 </For>
 
                 {!isLast && (
-                  <box height={1} border-bottom border-color={COLORS.border} />
+                  <box height={1} border-bottom borderColor={COLORS.border} />
                 )}
               </>
             );
@@ -266,10 +266,10 @@ function UsageTable(props: {
         </For>
 
         <box
-          padding-top={1}
-          padding-bottom={0.5}
+          paddingTop={1}
+          paddingBottom={0.5}
           border-top
-          border-color={COLORS.border}
+          borderColor={COLORS.border}
         >
           <text wrapMode="none">
             <span style={{ fg: COLORS.accent.teal, bold: true }}>
@@ -453,7 +453,7 @@ function QuotaPanel(props: {
                               border
                               borderStyle="rounded"
                               borderColor={isActive ? "#14b8a6" : "#334155"}
-                              width={props.twoColumns ? "49%" : undefined}
+                              flexGrow={1}
                             >
                               <box paddingBottom={0} flexShrink={0}>
                                 <text flexShrink={0} wrapMode="none">
@@ -504,9 +504,7 @@ function QuotaPanel(props: {
                                     quota.resetAt,
                                     compact
                                   );
-                                  const compactResetText = compact
-                                    ? truncateText(resetText, 8)
-                                    : resetText;
+                                  const compactResetText = resetText;
                                   const errorText = compact
                                     ? truncateText(
                                         `${displayLabel}: ${quota.error ?? "Error"}`,
@@ -601,10 +599,10 @@ function StatusBar(props: { daysFilter: number; lastUpdate: Date }) {
     <box
       height={1}
       border-top
-      border-color={COLORS.border}
-      background-color={COLORS.bg.accent}
-      padding-left={1}
-      padding-right={1}
+      borderColor={COLORS.border}
+      backgroundColor={COLORS.bg.accent}
+      paddingLeft={1}
+      paddingRight={1}
     >
       <text fg={COLORS.text.secondary} wrapMode="none">
         <span style={{ fg: COLORS.accent.teal }}>
@@ -835,12 +833,13 @@ function Dashboard(props: DashboardProps) {
     <box
       width="100%"
       height="100%"
-      flex-direction="column"
-      background-color={COLORS.bg.primary}
+      flexDirection="column"
+      backgroundColor={COLORS.bg.primary}
     >
       <box
-        flex-grow={1}
-        flex-direction={sideBySide() ? "row" : "column"}
+        flexGrow={1}
+        width="100%"
+        flexDirection={sideBySide() ? "row" : "column"}
         gap={0}
         padding={0}
       >
