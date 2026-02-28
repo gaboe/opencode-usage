@@ -1,6 +1,6 @@
 {
   "name": "opencode-usage",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "CLI tool for tracking OpenCode AI coding assistant usage and costs",
   "keywords": [
     "ai",
