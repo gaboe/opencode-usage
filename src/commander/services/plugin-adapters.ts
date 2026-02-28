@@ -299,8 +299,7 @@ function getAccountIdFromJwt(
 async function refreshSingleCodexToken(
   alias: string,
   account: Record<string, unknown>,
-  storePath: string,
-  store: Record<string, unknown>
+  storePath: string
 ): Promise<boolean> {
   const refreshToken = account.refreshToken;
   if (typeof refreshToken !== "string" || !refreshToken) {
@@ -340,20 +339,29 @@ async function refreshSingleCodexToken(
       getExpiryFromJwt(idClaims) ??
       Date.now() + tokens.expires_in * 1000;
 
-    // Update account in-place
-    account.accessToken = tokens.access_token;
-    if (tokens.refresh_token) account.refreshToken = tokens.refresh_token;
-    if (tokens.id_token) account.idToken = tokens.id_token;
-    account.expiresAt = expiresAt;
-    account.lastRefresh = new Date().toISOString();
-    account.accountId =
-      getAccountIdFromJwt(idClaims) ??
-      getAccountIdFromJwt(accessClaims) ??
-      account.accountId;
-    account.authInvalid = false;
-
-    // Write back to disk
-    await Bun.write(storePath, JSON.stringify(store, null, 2));
+    // Re-read store to avoid overwriting concurrent changes (e.g. activeAlias from switch)
+    const freshStore = JSON.parse(await Bun.file(storePath).text()) as Record<
+      string,
+      unknown
+    >;
+    const freshAccounts = (freshStore.accounts ?? {}) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const freshAcct = freshAccounts[alias];
+    if (freshAcct) {
+      freshAcct.accessToken = tokens.access_token;
+      if (tokens.refresh_token) freshAcct.refreshToken = tokens.refresh_token;
+      if (tokens.id_token) freshAcct.idToken = tokens.id_token;
+      freshAcct.expiresAt = expiresAt;
+      freshAcct.lastRefresh = new Date().toISOString();
+      freshAcct.accountId =
+        getAccountIdFromJwt(idClaims) ??
+        getAccountIdFromJwt(accessClaims) ??
+        freshAcct.accountId;
+      freshAcct.authInvalid = false;
+    }
+    await Bun.write(storePath, JSON.stringify(freshStore, null, 2));
 
     const daysLeft = ((expiresAt - Date.now()) / (24 * 60 * 60 * 1000)).toFixed(
       1
@@ -432,7 +440,7 @@ export async function proactiveRefreshCodexTokens(): Promise<void> {
     console.log(
       `[proactiveRefresh] ${alias}: ${hoursStale}h since refresh, refreshing…`
     );
-    const ok = await refreshSingleCodexToken(alias, account, storePath, store);
+    const ok = await refreshSingleCodexToken(alias, account, storePath);
     if (ok) refreshed++;
   }
 
@@ -617,8 +625,8 @@ async function clearStaleMetrics(
           const rl = acct.rateLimits as Record<string, Record<string, unknown>>;
           for (const key of ["fiveHour", "weekly"]) {
             const w = rl[key] as Record<string, unknown> | undefined;
-            if (w?.resetAt && typeof w.resetAt === "string") {
-              if (new Date(w.resetAt).getTime() < now) {
+            if (w?.resetAt && typeof w.resetAt === "number") {
+              if (w.resetAt < now) {
                 w.remaining = w.limit;
                 delete w.resetAt;
                 changed = true;
