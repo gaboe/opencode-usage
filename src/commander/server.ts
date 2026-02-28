@@ -35,14 +35,35 @@ const DEFAULT_PORT = 4466;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = (() => {
-  try {
-    const pkg = JSON.parse(
-      readFileSync(join(__dirname, "..", "..", "package.json"), "utf-8")
-    );
-    return String(pkg.version ?? "0.0.0");
-  } catch {
-    return "0.0.0";
+  // dev: __dirname = src/commander → ../../package.json
+  // bundled (bunx): __dirname = dist → ../package.json
+  for (const rel of [
+    join(__dirname, "..", "..", "package.json"),
+    join(__dirname, "..", "package.json"),
+  ]) {
+    try {
+      const pkg = JSON.parse(readFileSync(rel, "utf-8"));
+      if (pkg.version) return String(pkg.version);
+    } catch {}
   }
+  return "0.0.0";
+})();
+
+// ---------------------------------------------------------------------------
+// Static UI directory — resolved once at startup
+// ---------------------------------------------------------------------------
+
+const UI_DIST = await (async () => {
+  // dev: __dirname = src/commander → ../commander-ui/dist
+  // bundled (bunx): __dirname = dist → ./commander-ui
+  const candidates = [
+    join(__dirname, "commander-ui"),
+    join(__dirname, "..", "commander-ui", "dist"),
+  ];
+  for (const dir of candidates) {
+    if (await Bun.file(join(dir, "index.html")).exists()) return dir;
+  }
+  return candidates[0]; // fallback
 })();
 
 // ---------------------------------------------------------------------------
@@ -372,14 +393,6 @@ export async function runCommanderServer(args: CliArgs): Promise<void> {
 
       // Serve static UI files (SPA fallback)
       if (!url.pathname.startsWith("/api/")) {
-        // Dev: import.meta.url = src/commander/server.ts → ../commander-ui/dist
-        // Prod: import.meta.url = dist/index.js → ./commander-ui
-        const base = new URL(".", import.meta.url).pathname;
-        const UI_DIST = (await Bun.file(
-          join(base, "commander-ui", "index.html")
-        ).exists())
-          ? join(base, "commander-ui")
-          : join(base, "..", "commander-ui", "dist");
         const filePath =
           url.pathname === "/"
             ? join(UI_DIST, "index.html")
