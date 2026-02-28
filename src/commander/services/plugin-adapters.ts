@@ -172,6 +172,72 @@ registerCommand<{ provider: string; alias: string }, { ok: true }>({
 // accounts.ping
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Direct Codex ping — avoids bunx overhead and uses local token state
+// ---------------------------------------------------------------------------
+
+type CodexPingResult = { status: "ok" | "expired" | "error"; error?: string };
+
+/** Direct-ping a Codex account: read token from store, call OpenAI API. */
+async function directCodexPing(alias: string): Promise<CodexPingResult> {
+  const STORE_PATHS = [
+    join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
+    join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
+    join(homedir(), ".config", "oc-codex-multi-account", "accounts.json"),
+  ];
+
+  let store: Record<string, unknown> | null = null;
+  for (const p of STORE_PATHS) {
+    try {
+      store = JSON.parse(await Bun.file(p).text()) as Record<string, unknown>;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!store) return { status: "error", error: "No codex store found" };
+
+  const accounts = (store.accounts ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const account = accounts[alias];
+  if (!account)
+    return { status: "error", error: `Account "${alias}" not found` };
+
+  const token = account.accessToken;
+  if (typeof token !== "string" || !token) {
+    return { status: "error", error: "Missing access token" };
+  }
+
+  // POST /v1/responses — same as the plugin's ping command
+  try {
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "codex-mini-latest",
+        input: "reply with ok",
+        max_output_tokens: 1,
+      }),
+    });
+
+    // 200 = ok, 429 = rate-limited but token works
+    if (res.ok || res.status === 429) return { status: "ok" };
+    if (res.status === 401 || res.status === 403) {
+      return { status: "expired", error: `HTTP ${res.status}` };
+    }
+    return { status: "error", error: `HTTP ${res.status}` };
+  } catch (err) {
+    return {
+      status: "error",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
 /** Read a credential file from ~/.config/opencode/ — NOT exposed via API. */
 async function readCredentialFile(filename: string): Promise<unknown> {
   const filePath = join(homedir(), ".config", "opencode", filename);
@@ -191,18 +257,37 @@ async function spawnPluginCli(
   args: string[],
   timeoutMs = 15_000
 ): Promise<Record<string, unknown>> {
-  const localBin = `./node_modules/${command}/dist/cli.js`;
-  const useLocal = await Bun.file(localBin).exists();
+  // Check local project node_modules first, then ~/.config/opencode/node_modules/
+  const candidates = [
+    `./node_modules/${command}/dist/cli.js`,
+    join(
+      homedir(),
+      ".config",
+      "opencode",
+      "node_modules",
+      command,
+      "dist",
+      "cli.js"
+    ),
+  ];
+  let localBin: string | null = null;
+  for (const c of candidates) {
+    if (await Bun.file(c).exists()) {
+      localBin = c;
+      break;
+    }
+  }
+  const useLocal = localBin !== null;
 
   if (!useLocal) {
     const existing = bunxBarrier.get(command);
     if (existing) {
       // Wait for the first call to finish warming the cache, then run freely
       await existing.catch(() => {});
-      return runPluginCli(command, args, timeoutMs, false);
+      return runPluginCli(command, args, timeoutMs, null);
     }
     // First call — set barrier so others wait, then run when cache is warm
-    const warmup = runPluginCli(command, args, timeoutMs, false);
+    const warmup = runPluginCli(command, args, timeoutMs, null);
     const barrier = warmup.then(
       () => {},
       () => {}
@@ -212,23 +297,22 @@ async function spawnPluginCli(
     return warmup;
   }
 
-  return runPluginCli(command, args, timeoutMs, true);
+  return runPluginCli(command, args, timeoutMs, localBin);
 }
 
 async function runPluginCli(
   command: string,
   args: string[],
   timeoutMs: number,
-  useLocal: boolean
+  localBin: string | null
 ): Promise<Record<string, unknown>> {
   const t0 = Date.now();
-  const localBin = `./node_modules/${command}/dist/cli.js`;
-  const cmd = useLocal
+  const cmd = localBin
     ? ["bun", localBin, ...args]
     : ["bunx", `${command}@latest`, ...args];
 
   // Each bunx call gets its own temp dir to avoid parallel EEXIST link races
-  const cwd = useLocal
+  const cwd = localBin
     ? undefined
     : join(tmpdir(), `bunx-${crypto.randomUUID()}`);
   if (cwd) await Bun.$`mkdir -p ${cwd}`.quiet();
@@ -424,20 +508,51 @@ registerCommand<
       }
 
       case "codex": {
-        ctx.log("info", "Calling oc-codex-multi-account ping…");
-        const result = await spawnPluginCli("oc-codex-multi-account", [
-          "ping",
-          input.alias,
-        ]);
-        const status = String(result.status ?? "error");
-        ctx.log("info", `Result: ${status}`);
-        if (status === "ok") {
+        // 1) Direct ping — fast, no bunx overhead
+        ctx.log("info", `Direct-pinging codex account "${input.alias}"…`);
+        const direct = await directCodexPing(input.alias);
+        ctx.log("info", `Direct ping result: ${direct.status}`);
+
+        if (direct.status === "ok") {
           await clearStaleMetrics(input.provider, input.alias);
+          return { status: "ok", message: "pong" };
         }
+
+        // 2) If token expired, try plugin CLI (handles OAuth refresh)
+        if (direct.status === "expired") {
+          ctx.log("info", "Token expired — trying plugin CLI for refresh…");
+          try {
+            const result = await spawnPluginCli("oc-codex-multi-account", [
+              "ping",
+              input.alias,
+            ]);
+            const cliStatus = String(result.status ?? "error");
+            ctx.log("info", `Plugin CLI result: ${cliStatus}`);
+            if (cliStatus === "ok") {
+              await clearStaleMetrics(input.provider, input.alias);
+              return { status: "ok", message: "pong (token refreshed)" };
+            }
+            return {
+              status: cliStatus,
+              message: String(result.error ?? "Token refresh failed"),
+            };
+          } catch (cliErr) {
+            ctx.log(
+              "info",
+              `Plugin CLI failed: ${cliErr instanceof Error ? cliErr.message : String(cliErr)}`
+            );
+            return {
+              status: "error",
+              message:
+                direct.error ?? "Token expired and plugin refresh failed",
+            };
+          }
+        }
+
+        // 3) Other error (network, account not found, etc.)
         return {
-          status,
-          message:
-            status === "ok" ? "pong" : String(result.error ?? "unknown error"),
+          status: "error",
+          message: direct.error ?? "unknown error",
         };
       }
 
