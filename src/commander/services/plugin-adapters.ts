@@ -180,6 +180,7 @@ type CodexPingResult = { status: "ok" | "expired" | "error"; error?: string };
 
 /** Direct-ping a Codex account: read token from store, call OpenAI API. */
 async function directCodexPing(alias: string): Promise<CodexPingResult> {
+  console.log(`[directCodexPing] pinging "${alias}"…`);
   const STORE_PATHS = [
     join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
     join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
@@ -197,6 +198,10 @@ async function directCodexPing(alias: string): Promise<CodexPingResult> {
   }
   if (!store) return { status: "error", error: "No codex store found" };
 
+  console.log(
+    `[directCodexPing] found account "${alias}", calling ChatGPT Codex API…`
+  );
+
   const accounts = (store.accounts ?? {}) as Record<
     string,
     Record<string, unknown>
@@ -206,30 +211,47 @@ async function directCodexPing(alias: string): Promise<CodexPingResult> {
     return { status: "error", error: `Account "${alias}" not found` };
 
   const token = account.accessToken;
+  const accountId = account.accountId;
   if (typeof token !== "string" || !token) {
     return { status: "error", error: "Missing access token" };
   }
+  if (typeof accountId !== "string" || !accountId) {
+    return { status: "error", error: "Missing accountId" };
+  }
 
-  // POST /v1/responses — same as the plugin's ping command
+  // POST to ChatGPT Codex backend — Codex OAuth tokens don't work with api.openai.com
   try {
-    const res = await fetch("https://api.openai.com/v1/responses", {
+    const res = await fetch("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        "chatgpt-account-id": accountId,
+        "OpenAI-Beta": "responses=experimental",
+        originator: "codex_cli_rs",
+        accept: "text/event-stream",
       },
       body: JSON.stringify({
-        model: "codex-mini-latest",
-        input: "reply with ok",
-        max_output_tokens: 1,
+        model: "gpt-5.3-codex",
+        instructions: "reply ok",
+        input: [{ type: "message", role: "user", content: "hi" }],
+        store: false,
+        stream: true,
       }),
     });
 
     // 200 = ok, 429 = rate-limited but token works
-    if (res.ok || res.status === 429) return { status: "ok" };
+    if (res.ok || res.status === 429) {
+      console.log(`[directCodexPing] "${alias}" → ok (HTTP ${res.status})`);
+      return { status: "ok" };
+    }
     if (res.status === 401 || res.status === 403) {
+      console.log(
+        `[directCodexPing] "${alias}" → expired (HTTP ${res.status})`
+      );
       return { status: "expired", error: `HTTP ${res.status}` };
     }
+    console.log(`[directCodexPing] "${alias}" → error (HTTP ${res.status})`);
     return { status: "error", error: `HTTP ${res.status}` };
   } catch (err) {
     return {
@@ -246,10 +268,10 @@ async function readCredentialFile(filename: string): Promise<unknown> {
 }
 
 /**
- * Barrier for bunx calls: the first call per command warms the cache,
- * subsequent calls wait for it then run in parallel.
+ * Serial queue for bunx calls per command — prevents EEXIST link races
+ * when multiple calls for the same package run in parallel.
  */
-const bunxBarrier = new Map<string, Promise<void>>();
+const bunxQueue = new Map<string, Promise<unknown>>();
 
 /** Spawn a plugin CLI command and parse JSON output from stdout. */
 async function spawnPluginCli(
@@ -280,21 +302,19 @@ async function spawnPluginCli(
   const useLocal = localBin !== null;
 
   if (!useLocal) {
-    const existing = bunxBarrier.get(command);
-    if (existing) {
-      // Wait for the first call to finish warming the cache, then run freely
-      await existing.catch(() => {});
-      return runPluginCli(command, args, timeoutMs, null);
-    }
-    // First call — set barrier so others wait, then run when cache is warm
-    const warmup = runPluginCli(command, args, timeoutMs, null);
-    const barrier = warmup.then(
-      () => {},
-      () => {}
+    // Chain onto existing queue so bunx calls for same command run one-at-a-time
+    const prev = bunxQueue.get(command) ?? Promise.resolve();
+    const run = prev
+      .catch(() => {}) // don't chain rejections
+      .then(() => runPluginCli(command, args, timeoutMs, null));
+    bunxQueue.set(
+      command,
+      run.then(
+        () => {},
+        () => {}
+      )
     );
-    bunxBarrier.set(command, barrier);
-    barrier.finally(() => bunxBarrier.delete(command));
-    return warmup;
+    return run;
   }
 
   return runPluginCli(command, args, timeoutMs, localBin);
