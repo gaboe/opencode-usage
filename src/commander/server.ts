@@ -16,6 +16,7 @@ import {
 import { getQuotaData } from "./services/quota-service.js";
 import { getJob, runCommand } from "./services/command-runner.js";
 import { ensureActionsRegistered } from "./services/action-service.js";
+import { proactiveRefreshCodexTokens } from "./services/plugin-adapters.js";
 import {
   getAppCatalog,
   ensureAppCommandsRegistered,
@@ -409,6 +410,9 @@ export async function runCommanderServer(args: CliArgs): Promise<void> {
 
   const serverUrl = `http://${hostname}:${port}`;
   console.log(`Commander ready at ${serverUrl}`);
+
+  // Proactive token refresh — keeps Codex tokens fresh (background, non-blocking)
+  proactiveRefreshCodexTokens().catch(() => {});
 
   if (isBun && !process.env.NO_OPEN) {
     const cmd =

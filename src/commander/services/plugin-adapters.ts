@@ -260,6 +260,186 @@ async function directCodexPing(alias: string): Promise<CodexPingResult> {
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Proactive Codex token refresh — keeps tokens fresh (once per 24h per account)
+// ---------------------------------------------------------------------------
+
+const CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
+const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const REFRESH_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = Buffer.from(parts[1], "base64").toString("utf-8");
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+function getExpiryFromJwt(
+  claims: Record<string, unknown> | null
+): number | null {
+  if (!claims || typeof claims.exp !== "number") return null;
+  return claims.exp * 1000;
+}
+
+function getAccountIdFromJwt(
+  claims: Record<string, unknown> | null
+): string | null {
+  const auth = claims?.["https://api.openai.com/auth"] as
+    | Record<string, unknown>
+    | undefined;
+  return (auth?.chatgpt_account_id as string) ?? null;
+}
+
+async function refreshSingleCodexToken(
+  alias: string,
+  account: Record<string, unknown>,
+  storePath: string,
+  store: Record<string, unknown>
+): Promise<boolean> {
+  const refreshToken = account.refreshToken;
+  if (typeof refreshToken !== "string" || !refreshToken) {
+    console.log(`[proactiveRefresh] ${alias}: no refresh token, skipping`);
+    return false;
+  }
+
+  try {
+    const t0 = Date.now();
+    const res = await fetch(CODEX_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: CODEX_CLIENT_ID,
+        refresh_token: refreshToken,
+      }),
+    });
+
+    if (!res.ok) {
+      console.log(
+        `[proactiveRefresh] ${alias}: refresh failed HTTP ${res.status} in ${Date.now() - t0}ms`
+      );
+      return false;
+    }
+
+    const tokens = (await res.json()) as {
+      access_token: string;
+      refresh_token?: string;
+      id_token?: string;
+      expires_in: number;
+    };
+    const accessClaims = decodeJwtPayload(tokens.access_token);
+    const idClaims = tokens.id_token ? decodeJwtPayload(tokens.id_token) : null;
+    const expiresAt =
+      getExpiryFromJwt(accessClaims) ??
+      getExpiryFromJwt(idClaims) ??
+      Date.now() + tokens.expires_in * 1000;
+
+    // Update account in-place
+    account.accessToken = tokens.access_token;
+    if (tokens.refresh_token) account.refreshToken = tokens.refresh_token;
+    if (tokens.id_token) account.idToken = tokens.id_token;
+    account.expiresAt = expiresAt;
+    account.lastRefresh = new Date().toISOString();
+    account.accountId =
+      getAccountIdFromJwt(idClaims) ??
+      getAccountIdFromJwt(accessClaims) ??
+      account.accountId;
+    account.authInvalid = false;
+
+    // Write back to disk
+    await Bun.write(storePath, JSON.stringify(store, null, 2));
+
+    const daysLeft = ((expiresAt - Date.now()) / (24 * 60 * 60 * 1000)).toFixed(
+      1
+    );
+    console.log(
+      `[proactiveRefresh] ${alias}: refreshed in ${Date.now() - t0}ms, new expiry in ${daysLeft}d`
+    );
+    return true;
+  } catch (err) {
+    console.log(
+      `[proactiveRefresh] ${alias}: error — ${err instanceof Error ? err.message : String(err)}`
+    );
+    return false;
+  }
+}
+
+/**
+ * Proactively refresh Codex tokens that haven't been refreshed in 24+ hours.
+ * Keeps tokens fresh so they never silently expire.
+ * Safe to call frequently — skips accounts refreshed recently.
+ */
+export async function proactiveRefreshCodexTokens(): Promise<void> {
+  const STORE_PATHS = [
+    join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
+    join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
+    join(homedir(), ".config", "oc-codex-multi-account", "accounts.json"),
+  ];
+
+  let storePath: string | null = null;
+  let store: Record<string, unknown> | null = null;
+  for (const p of STORE_PATHS) {
+    try {
+      store = JSON.parse(await Bun.file(p).text()) as Record<string, unknown>;
+      storePath = p;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!store || !storePath) return;
+
+  const accounts = (store.accounts ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const now = Date.now();
+  let refreshed = 0;
+
+  for (const [alias, account] of Object.entries(accounts)) {
+    const expiresAt =
+      typeof account.expiresAt === "number" ? account.expiresAt : 0;
+    const lastRefresh =
+      typeof account.lastRefresh === "string"
+        ? new Date(account.lastRefresh).getTime()
+        : 0;
+    const timeSinceRefresh = now - lastRefresh;
+    const timeToExpiry = expiresAt - now;
+
+    // Already expired — needs reauth, not refresh
+    if (timeToExpiry <= 0) {
+      console.log(`[proactiveRefresh] ${alias}: token expired, needs reauth`);
+      continue;
+    }
+
+    // Refreshed within last 24h — skip
+    if (timeSinceRefresh < REFRESH_COOLDOWN_MS) {
+      const hoursAgo = (timeSinceRefresh / (60 * 60 * 1000)).toFixed(1);
+      console.log(
+        `[proactiveRefresh] ${alias}: refreshed ${hoursAgo}h ago, skipping`
+      );
+      continue;
+    }
+
+    // Token still valid but stale (>24h since refresh) — refresh it
+    const hoursStale = (timeSinceRefresh / (60 * 60 * 1000)).toFixed(1);
+    console.log(
+      `[proactiveRefresh] ${alias}: ${hoursStale}h since refresh, refreshing…`
+    );
+    const ok = await refreshSingleCodexToken(alias, account, storePath, store);
+    if (ok) refreshed++;
+  }
+
+  if (refreshed > 0) {
+    console.log(`[proactiveRefresh] refreshed ${refreshed} codex token(s)`);
+  }
+}
 /** Read a credential file from ~/.config/opencode/ — NOT exposed via API. */
 async function readCredentialFile(filename: string): Promise<unknown> {
   const filePath = join(homedir(), ".config", "opencode", filename);
@@ -535,6 +715,8 @@ registerCommand<
 
         if (direct.status === "ok") {
           await clearStaleMetrics(input.provider, input.alias);
+          // Fire proactive refresh for all codex accounts (background, non-blocking)
+          proactiveRefreshCodexTokens().catch(() => {});
           return { status: "ok", message: "pong" };
         }
 
