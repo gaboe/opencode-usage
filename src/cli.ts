@@ -14,6 +14,8 @@ export type CliArgs = {
   watch?: boolean;
   stats?: boolean;
   config?: "show";
+  commander?: boolean;
+  commanderPort?: number;
 };
 
 // Get CLI args - works with both Bun and Node.js
@@ -72,6 +74,8 @@ export function parseArgs(): CliArgs {
         watch: { type: "boolean", short: "w" },
         stats: { type: "boolean", short: "S" },
         config: { type: "string" },
+        commander: { type: "boolean" },
+        "commander-port": { type: "string" },
         help: { type: "boolean", short: "h" },
       },
       strict: true,
@@ -92,6 +96,10 @@ export function parseArgs(): CliArgs {
       watch: values.watch,
       stats: values.stats,
       config: values.config as "show" | undefined,
+      commander: values.commander,
+      commanderPort: values["commander-port"]
+        ? parseInt(values["commander-port"], 10)
+        : undefined,
     };
   } catch (error) {
     if (error instanceof Error && error.message.includes("Unknown option")) {
@@ -113,6 +121,7 @@ Usage:
 Modes:
   (default)               Interactive dashboard (Bun only)
   -S, --stats             Stats table mode (works with Node.js too)
+  --commander             Start Commander web server (Bun only)
 
 Options:
   -p, --provider <name>   Filter by provider (anthropic, openai, google, opencode)
@@ -124,6 +133,7 @@ Options:
   -w, --watch             Watch mode - refresh every 5 minutes (stats mode only)
       --config show       Show current configuration
   -h, --help              Show this help message
+      --commander-port <n>  Commander server port (default: 3000)
 
 Codex Quota:
   Dashboard auto-reads Codex auth from ~/.codex/auth.json.

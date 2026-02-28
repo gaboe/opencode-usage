@@ -26,6 +26,7 @@ import { renderTable, renderJson } from "./renderer.js";
 import { runSolidDashboard } from "./dashboard-solid.js";
 import type { CursorState, MessageJson } from "./types.js";
 import { showConfig } from "./config-commands.js";
+import { runCommanderServer } from "./commander/index.js";
 
 const WATCH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -97,8 +98,24 @@ async function renderUsage(
 }
 
 async function main(): Promise<void> {
-  const { provider, days, since, until, json, monthly, watch, stats, config } =
-    parseArgs();
+  const args = parseArgs();
+  const {
+    provider,
+    days,
+    since,
+    until,
+    json,
+    monthly,
+    watch,
+    stats,
+    config,
+    commander,
+  } = args;
+
+  if (commander) {
+    await runCommanderServer(args);
+    return;
+  }
 
   if (config === "show") {
     await showConfig();

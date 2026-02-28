@@ -1,6 +1,6 @@
 {
   "name": "opencode-usage",
-  "version": "0.4.8",
+  "version": "0.5.0",
   "description": "CLI tool for tracking OpenCode AI coding assistant usage and costs",
   "keywords": [
     "ai",
@@ -51,6 +51,7 @@
     "ck:warmup": "bun run scripts/warmup-ck.ts",
     "compile": "bun build --compile --minify ./src/index.ts --outfile opencode-usage",
     "dev": "bun run ./src/index.ts",
+    "dev:commander": "NO_OPEN=1 bun --watch run ./src/index.ts --commander & bun run --cwd src/commander-ui dev",
     "dev:warm": "bun run ck:warmup & bun run ./src/index.ts",
     "format": "bunx oxfmt",
     "lint": "bunx oxlint -c ./.oxlintrc.json --deny-warnings",
@@ -59,6 +60,7 @@
   "dependencies": {
     "@opentui/core": "0.1.78",
     "@opentui/solid": "0.1.78",
+    "oc-anthropic-multi-account": "^1.0.14",
     "solid-js": "^1.9.11"
   },
   "devDependencies": {
