@@ -8,9 +8,10 @@ import type { CliArgs } from "../cli.js";
 import { join, dirname } from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type {
-  UsageQueryOpts,
-  SerializedDailyStats,
+import {
+  getUsageData,
+  type UsageQueryOpts,
+  type SerializedDailyStats,
 } from "./services/usage-service.js";
 import { getQuotaData } from "./services/quota-service.js";
 import { getJob, runCommand } from "./services/command-runner.js";
@@ -45,14 +46,16 @@ const PKG_VERSION = (() => {
 })();
 
 // ---------------------------------------------------------------------------
-// Usage worker — runs SQLite queries off the main thread
+// Usage query — Worker thread in dev, direct call in bundled mode
 // ---------------------------------------------------------------------------
 
 const usageWorkerPath = join(__dirname, "services", "usage-worker.ts");
+const canUseWorker = await Bun.file(usageWorkerPath).exists();
 
-function queryUsageInWorker(
+async function queryUsage(
   opts: UsageQueryOpts
 ): Promise<SerializedDailyStats[]> {
+  if (!canUseWorker) return getUsageData(opts);
   return new Promise((resolve, reject) => {
     const worker = new Worker(usageWorkerPath);
     worker.onmessage = (event: MessageEvent) => {
@@ -109,7 +112,7 @@ export async function runCommanderServer(args: CliArgs): Promise<void> {
           const until = url.searchParams.get("until") ?? undefined;
           const monthly = url.searchParams.get("monthly") === "true";
 
-          const data = await queryUsageInWorker({
+          const data = await queryUsage({
             provider,
             days,
             since,
@@ -369,10 +372,14 @@ export async function runCommanderServer(args: CliArgs): Promise<void> {
 
       // Serve static UI files (SPA fallback)
       if (!url.pathname.startsWith("/api/")) {
-        const UI_DIST = join(
-          new URL(".", import.meta.url).pathname,
-          "../commander-ui/dist"
-        );
+        // Dev: import.meta.url = src/commander/server.ts → ../commander-ui/dist
+        // Prod: import.meta.url = dist/index.js → ./commander-ui
+        const base = new URL(".", import.meta.url).pathname;
+        const UI_DIST = (await Bun.file(
+          join(base, "commander-ui", "index.html")
+        ).exists())
+          ? join(base, "commander-ui")
+          : join(base, "..", "commander-ui", "dist");
         const filePath =
           url.pathname === "/"
             ? join(UI_DIST, "index.html")

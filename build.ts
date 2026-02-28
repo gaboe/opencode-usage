@@ -42,3 +42,13 @@ if (tscResult.exitCode !== 0) {
 }
 
 console.log("Generated type definitions");
+
+// Copy commander-ui dist into dist/ for npm packaging
+const uiSrc = "./src/commander-ui/dist";
+const uiDest = "./dist/commander-ui";
+const cpResult = Bun.spawnSync(["cp", "-r", uiSrc, uiDest]);
+if (cpResult.exitCode !== 0) {
+  console.warn("Warning: commander-ui dist not found, skipping copy");
+} else {
+  console.log("Copied commander-ui dist");
+}
