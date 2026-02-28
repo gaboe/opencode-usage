@@ -11,6 +11,7 @@ CLI tool for tracking [OpenCode](https://github.com/sst/opencode) AI coding assi
 - JSON output for scripting and automation
 - Model pricing for accurate cost estimation
 - Terminal table output
+- **Commander web dashboard** with quota status, account management, and ping
 
 ## Installation
 
@@ -62,6 +63,25 @@ opencode-usage -w -d 1
 # Combine filters
 opencode-usage --provider anthropic --since 7d --json
 ```
+
+### Commander Web Dashboard
+
+```bash
+# Launch the web dashboard
+opencode-usage --commander
+
+# Custom port
+opencode-usage --commander --commander-port 5000
+```
+
+The Commander provides a single-page web UI with:
+
+- **Quota Status** - Per-provider account usage with progress bars, thresholds, and stale detection (Anthropic, Codex, Antigravity)
+- **Usage Breakdown** - Daily token usage table with cost estimates and provider drill-down
+- **Account Management** - Add, switch, remove, and re-authenticate accounts
+- **Ping** - Verify account connectivity with live PONG/FAIL indicators
+- **Dark mode** toggle
+- Auto-refresh every 5 minutes
 
 ## Output
 
