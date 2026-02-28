@@ -43,9 +43,29 @@ if (tscResult.exitCode !== 0) {
 
 console.log("Generated type definitions");
 
-// Copy commander-ui dist into dist/ for npm packaging
+// Build commander-ui (Vite) then copy into dist/ for npm packaging
+const uiDir = "./src/commander-ui";
 const uiSrc = "./src/commander-ui/dist";
 const uiDest = "./dist/commander-ui";
+
+const installResult = Bun.spawnSync(["bun", "install"], {
+  cwd: uiDir,
+  stdio: ["ignore", "inherit", "inherit"],
+});
+if (installResult.exitCode !== 0) {
+  console.warn("Warning: commander-ui install failed, skipping UI build");
+} else {
+  const viteBuild = Bun.spawnSync(["bun", "run", "build"], {
+    cwd: uiDir,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  if (viteBuild.exitCode !== 0) {
+    console.error("commander-ui build failed");
+    process.exit(1);
+  }
+  console.log("Built commander-ui");
+}
+
 const cpResult = Bun.spawnSync(["cp", "-r", uiSrc, uiDest]);
 if (cpResult.exitCode !== 0) {
   console.warn("Warning: commander-ui dist not found, skipping copy");
