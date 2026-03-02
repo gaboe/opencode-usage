@@ -261,6 +261,34 @@ async function directCodexPing(alias: string): Promise<CodexPingResult> {
   }
 }
 
+/** Try to directly refresh a single Codex account's access token. */
+async function tryDirectCodexRefresh(alias: string): Promise<boolean> {
+  const STORE_PATHS = [
+    join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
+    join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
+    join(homedir(), ".config", "oc-codex-multi-account", "accounts.json"),
+  ];
+  let storePath: string | null = null;
+  let store: Record<string, unknown> | null = null;
+  for (const p of STORE_PATHS) {
+    try {
+      store = JSON.parse(await Bun.file(p).text()) as Record<string, unknown>;
+      storePath = p;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!store || !storePath) return false;
+  const accounts = (store.accounts ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const account = accounts[alias];
+  if (!account) return false;
+  return refreshSingleCodexToken(alias, account, storePath);
+}
+
 // ---------------------------------------------------------------------------
 // Proactive Codex token refresh — keeps tokens fresh (once per 24h per account)
 // ---------------------------------------------------------------------------
@@ -420,9 +448,19 @@ export async function proactiveRefreshCodexTokens(): Promise<void> {
     const timeSinceRefresh = now - lastRefresh;
     const timeToExpiry = expiresAt - now;
 
-    // Already expired — needs reauth, not refresh
+    // Already expired — attempt refresh anyway (refresh token may still be valid)
     if (timeToExpiry <= 0) {
-      console.log(`[proactiveRefresh] ${alias}: token expired, needs reauth`);
+      console.log(
+        `[proactiveRefresh] ${alias}: token expired, attempting refresh…`
+      );
+      const ok = await refreshSingleCodexToken(alias, account, storePath);
+      if (ok) {
+        refreshed++;
+      } else {
+        console.log(
+          `[proactiveRefresh] ${alias}: refresh failed — needs reauth`
+        );
+      }
       continue;
     }
 
@@ -728,9 +766,20 @@ registerCommand<
           return { status: "ok", message: "pong" };
         }
 
-        // 2) If token expired, try plugin CLI (handles OAuth refresh)
+        // 2) If token expired, try direct refresh first, then plugin CLI
         if (direct.status === "expired") {
-          ctx.log("info", "Token expired — trying plugin CLI for refresh…");
+          // 2a) Fast direct refresh — no bunx overhead
+          ctx.log("info", "Token expired — attempting direct token refresh…");
+          const directRefreshOk = await tryDirectCodexRefresh(input.alias);
+          if (directRefreshOk) {
+            const rePing = await directCodexPing(input.alias);
+            if (rePing.status === "ok") {
+              await clearStaleMetrics(input.provider, input.alias);
+              return { status: "ok", message: "pong (token refreshed)" };
+            }
+          }
+          // 2b) Direct refresh failed — fall back to plugin CLI
+          ctx.log("info", "Direct refresh failed — trying plugin CLI…");
           try {
             const result = await spawnPluginCli("oc-codex-multi-account", [
               "ping",
