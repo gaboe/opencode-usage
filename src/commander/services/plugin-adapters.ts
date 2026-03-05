@@ -742,7 +742,13 @@ registerCommand<
           input.alias,
         ]);
         const status = String(result.status ?? "error");
+        const quota = (result as Record<string, unknown>).quota as
+          | Record<string, unknown>
+          | undefined;
         ctx.log("info", `Result: ${status}`);
+        if (quota) {
+          ctx.log("info", `Quota from ping: ${JSON.stringify(quota)}`);
+        }
         if (status === "ok") {
           await clearStaleMetrics(input.provider, input.alias);
         }
