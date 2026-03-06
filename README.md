@@ -74,11 +74,16 @@ opencode-usage --commander
 opencode-usage --commander --commander-port 5000
 ```
 
+![Commander Dashboard](docs/commander.png)
+
 The Commander provides a single-page web UI with:
 
-- **Quota Status** - Per-provider account usage with progress bars, thresholds, and stale detection (Anthropic, Codex, Antigravity)
-- **Usage Breakdown** - Daily token usage table with cost estimates and provider drill-down
+- **Quota Status** - Per-provider account usage with progress bars, configurable thresholds, and stale detection
+- **Multi-Account** - Full multi-account support for Anthropic and Gemini providers
+- **Usage Breakdown** - Daily/monthly token usage table with cost estimates, provider filter, and date range
 - **Account Management** - Add, switch, remove, and re-authenticate accounts
+- **Plugins** - Extensible plugin system for custom providers and integrations
+- **Configuration** - Customizable thresholds, display preferences, and provider settings
 - **Ping** - Verify account connectivity with live PONG/FAIL indicators
 - **Dark mode** toggle
 - Auto-refresh every 5 minutes
