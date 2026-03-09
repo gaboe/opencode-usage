@@ -47,7 +47,8 @@ function resolveSource(provider: string): ConfigSource {
 
 registerCommand<
   { provider: string; alias: string },
-  { message: string; requiresTerminal: true }
+  | { needsAuth: true; alias: string }
+  | { message: string; requiresTerminal: true }
 >({
   id: "accounts.add",
   timeoutMs: 30_000,
@@ -63,13 +64,38 @@ registerCommand<
     return { provider: p.provider, alias: p.alias };
   },
   async run(ctx: CommandContext, input) {
+    const provider = input.provider;
+
+    // Codex & Anthropic: create stub account entry, then let the UI drive OAuth
+    if (provider === "codex" || provider === "anthropic") {
+      const source = resolveSource(provider);
+      const data = (await readConfig(source)) as Record<string, unknown>;
+      const accounts = (data.accounts ?? {}) as Record<string, unknown>;
+
+      if (accounts[input.alias]) {
+        throw new Error(`Account "${input.alias}" already exists`);
+      }
+
+      // Create a minimal stub — reauth will fill in real tokens
+      accounts[input.alias] = { needsAuth: true };
+      data.accounts = accounts;
+
+      // Set as active
+      if (provider === "codex") {
+        data.activeAlias = input.alias;
+      } else {
+        data.currentAccount = input.alias;
+      }
+
+      await writeConfig(source, data);
+      ctx.log("info", `Created stub account "${input.alias}" for ${provider}`);
+      return { needsAuth: true as const, alias: input.alias };
+    }
+
+    // Other providers: terminal-only
     ctx.log(
       "info",
-      `Adding account "${input.alias}" for provider "${input.provider}"`
-    );
-    ctx.log(
-      "info",
-      "OAuth authentication requires terminal interaction — run this command from the CLI."
+      "OAuth authentication requires terminal interaction \u2014 run this command from the CLI."
     );
     return {
       message: `Account "${input.alias}" for provider "${input.provider}" requires terminal-based OAuth. Please run: opencode-usage accounts add --provider ${input.provider} --alias ${input.alias}`,

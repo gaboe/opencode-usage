@@ -52,6 +52,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const API_BASE = "";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -546,8 +548,17 @@ function ThresholdEditDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Add account dialog (preserved from original)
+// Add account dialog — supports inline OAuth for codex/anthropic
 // ---------------------------------------------------------------------------
+
+type AddStep =
+  | "alias"
+  | "creating"
+  | "generating"
+  | "waiting"
+  | "completing"
+  | "done"
+  | "error";
 
 function AddAccountDialog({
   provider,
@@ -557,37 +568,140 @@ function AddAccountDialog({
   onDone: () => void;
 }) {
   const [alias, setAlias] = useState("");
-  const [jobId, setJobId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<AddStep>("alias");
+  const [authUrl, setAuthUrl] = useState("");
+  const [verifier, setVerifier] = useState("");
+  const [callbackInput, setCallbackInput] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  function reset() {
+    setStep("alias");
+    setAlias("");
+    setAuthUrl("");
+    setVerifier("");
+    setCallbackInput("");
+    setErrorMsg("");
+    setCopied(false);
+  }
+
+  async function pollJobResult(id: string): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const res = await fetch(`${API_BASE}/api/jobs/${id}`);
+      if (!res.ok) throw new Error(`Job poll failed: ${res.status}`);
+      const job = await res.json();
+      if (job.status === "success")
+        return job.result as Record<string, unknown>;
+      if (job.status === "failed")
+        throw new Error(job.error?.message ?? "Job failed");
+    }
+    throw new Error("Timed out waiting for job");
+  }
 
   async function handleAdd() {
     if (!alias.trim()) return;
-    setLoading(true);
+    setStep("creating");
+    setErrorMsg("");
     try {
       const res = await api.accountAction(provider, "add", alias.trim());
-      setJobId(res.jobId);
-      toast.success(`Adding account "${alias}" to ${provider}...`);
+      const result = await pollJobResult(res.jobId);
+
+      if (result.needsAuth) {
+        // Stub created — start OAuth flow
+        await startOAuth();
+      } else {
+        // Non-OAuth provider — done
+        setStep("done");
+        toast.success(`Account "${alias}" added to ${provider}`);
+        onDone();
+        setTimeout(() => {
+          setOpen(false);
+          reset();
+        }, 1500);
+      }
     } catch (err) {
-      toast.error(
-        `Failed: ${err instanceof Error ? err.message : String(err)}`
-      );
-    } finally {
-      setLoading(false);
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setStep("error");
     }
   }
 
-  function handleComplete() {
-    onDone();
-    setTimeout(() => {
-      setOpen(false);
-      setAlias("");
-      setJobId(null);
-    }, 1000);
+  async function startOAuth() {
+    setStep("generating");
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/accounts/${provider}/reauth-start`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ alias: alias.trim() }),
+        }
+      );
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const { jobId: authJobId } = await res.json();
+      const result = await pollJobResult(authJobId);
+      setAuthUrl(String(result.url ?? ""));
+      setVerifier(String(result.verifier ?? ""));
+      setStep("waiting");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setStep("error");
+    }
+  }
+
+  async function handleComplete() {
+    if (!callbackInput.trim()) return;
+    setStep("completing");
+    setErrorMsg("");
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/accounts/${provider}/reauth-complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            alias: alias.trim(),
+            callbackUrl: callbackInput.trim(),
+            verifier,
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const { jobId: completeJobId } = await res.json();
+      const result = await pollJobResult(completeJobId);
+      if (result.status === "ok") {
+        setStep("done");
+        toast.success(`Account "${alias}" added and authenticated`);
+        onDone();
+        setTimeout(() => {
+          setOpen(false);
+          reset();
+        }, 1500);
+      } else {
+        setErrorMsg(String(result.message ?? "Unknown error"));
+        setStep("error");
+      }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setStep("error");
+    }
+  }
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(authUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) reset();
+      }}
+    >
       <Tooltip>
         <TooltipTrigger
           render={
@@ -603,23 +717,113 @@ function AddAccountDialog({
         />
         <TooltipContent>Add new account</TooltipContent>
       </Tooltip>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add {provider} Account</DialogTitle>
+          <DialogTitle className="text-sm">Add {provider} Account</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Alias</label>
-            <Input
-              value={alias}
-              onChange={(e) => setAlias(e.target.value)}
-              placeholder="e.g. work-account"
-            />
-          </div>
-          <Button onClick={handleAdd} disabled={loading || !alias.trim()}>
-            {loading ? "Adding..." : "Add"}
-          </Button>
-          <JobLogPanel jobId={jobId} onComplete={handleComplete} />
+        <div className="space-y-4">
+          {step === "alias" && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Alias</label>
+                <Input
+                  value={alias}
+                  onChange={(e) => setAlias(e.target.value)}
+                  placeholder="e.g. work-account"
+                />
+              </div>
+              <Button onClick={handleAdd} disabled={!alias.trim()}>
+                Add
+              </Button>
+            </div>
+          )}
+
+          {step === "creating" && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Creating account entry\u2026
+            </div>
+          )}
+
+          {step === "generating" && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Generating authorization URL\u2026
+            </div>
+          )}
+
+          {step === "waiting" && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium">
+                  1. Open this URL in your browser:
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    readOnly
+                    value={authUrl}
+                    className="text-[10px] font-mono flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopy}
+                    className="shrink-0"
+                  >
+                    {copied ? (
+                      <Check className="size-3" />
+                    ) : (
+                      <Copy className="size-3" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs font-medium">
+                2. Log in and authorize access
+              </p>
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium">
+                  3. Paste the callback URL here:
+                </p>
+                <Input
+                  placeholder="https://...callback?code=..."
+                  value={callbackInput}
+                  onChange={(e) => setCallbackInput(e.target.value)}
+                  className="text-[10px] font-mono"
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={handleComplete}
+                disabled={!callbackInput.trim()}
+              >
+                Complete Authentication
+              </Button>
+            </div>
+          )}
+
+          {step === "completing" && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Exchanging tokens\u2026
+            </div>
+          )}
+
+          {step === "done" && (
+            <div className="flex items-center gap-2 text-xs text-green-500">
+              <Check className="size-3" />
+              Account added and authenticated
+            </div>
+          )}
+
+          {step === "error" && (
+            <div className="space-y-2">
+              <p className="text-xs text-destructive">{errorMsg}</p>
+              <Button variant="outline" size="sm" onClick={reset}>
+                Try Again
+              </Button>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -900,8 +1104,6 @@ function AccountCard({
 // ---------------------------------------------------------------------------
 // Re-auth dialog
 // ---------------------------------------------------------------------------
-
-const API_BASE = "";
 
 type ReauthStep =
   | "idle"
