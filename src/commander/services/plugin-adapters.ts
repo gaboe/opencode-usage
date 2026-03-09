@@ -411,7 +411,19 @@ async function refreshSingleCodexToken(
  * Keeps tokens fresh so they never silently expire.
  * Safe to call frequently — skips accounts refreshed recently.
  */
+let _proactiveRefreshRunning = false;
 export async function proactiveRefreshCodexTokens(): Promise<void> {
+  // Deduplicate — skip if already running (multiple pings can fire this concurrently)
+  if (_proactiveRefreshRunning) return;
+  _proactiveRefreshRunning = true;
+  try {
+    await _proactiveRefreshCodexTokensInner();
+  } finally {
+    _proactiveRefreshRunning = false;
+  }
+}
+
+async function _proactiveRefreshCodexTokensInner(): Promise<void> {
   const STORE_PATHS = [
     join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
     join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
@@ -439,6 +451,14 @@ export async function proactiveRefreshCodexTokens(): Promise<void> {
   let refreshed = 0;
 
   for (const [alias, account] of Object.entries(accounts)) {
+    // Skip accounts marked as needing reauth — no point retrying
+    if (account.authInvalid === true) {
+      console.log(
+        `[proactiveRefresh] ${alias}: authInvalid, skipping (needs reauth)`
+      );
+      continue;
+    }
+
     const expiresAt =
       typeof account.expiresAt === "number" ? account.expiresAt : 0;
     const lastRefresh =
