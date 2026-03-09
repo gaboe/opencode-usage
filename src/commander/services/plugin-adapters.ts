@@ -324,6 +324,99 @@ function getAccountIdFromJwt(
   return (auth?.chatgpt_account_id as string) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Codex CLI auth.json sync — import fresher token from standalone CLI
+// ---------------------------------------------------------------------------
+
+const CODEX_CLI_AUTH_PATH = join(homedir(), ".codex", "auth.json");
+
+type CodexCliAuth = {
+  accessToken: string;
+  refreshToken: string;
+  idToken: string | null;
+  accountId: string | null;
+  expiresAt: number;
+};
+
+async function tryReadCodexCliAuth(): Promise<CodexCliAuth | null> {
+  try {
+    const raw = JSON.parse(
+      await Bun.file(CODEX_CLI_AUTH_PATH).text()
+    ) as Record<string, unknown>;
+    const tokens = raw.tokens as Record<string, string> | undefined;
+    if (!tokens?.access_token) return null;
+
+    const accessClaims = decodeJwtPayload(tokens.access_token);
+    const idClaims = tokens.id_token ? decodeJwtPayload(tokens.id_token) : null;
+    const expiresAt =
+      getExpiryFromJwt(accessClaims) ?? getExpiryFromJwt(idClaims) ?? 0;
+    if (expiresAt <= Date.now()) return null; // CLI token also expired
+
+    return {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token ?? "",
+      idToken: tokens.id_token ?? null,
+      accountId:
+        getAccountIdFromJwt(idClaims) ?? getAccountIdFromJwt(accessClaims),
+      expiresAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Try importing a fresher token from ~/.codex/auth.json for the same account. */
+async function tryImportFromCodexCli(
+  alias: string,
+  account: Record<string, unknown>,
+  storePath: string
+): Promise<boolean> {
+  const cli = await tryReadCodexCliAuth();
+  if (!cli || !cli.refreshToken) return false;
+
+  // Only import if same accountId
+  const pluginAccountId = account.accountId as string | undefined;
+  if (!pluginAccountId || cli.accountId !== pluginAccountId) return false;
+
+  // Only import if CLI token is actually fresher
+  const pluginExpiry =
+    typeof account.expiresAt === "number" ? account.expiresAt : 0;
+  if (cli.expiresAt <= pluginExpiry) return false;
+
+  console.log(
+    `[proactiveRefresh] ${alias}: importing fresher token from ~/.codex/auth.json`
+  );
+
+  // Re-read store to avoid overwriting concurrent changes
+  const freshStore = JSON.parse(await Bun.file(storePath).text()) as Record<
+    string,
+    unknown
+  >;
+  const freshAccounts = (freshStore.accounts ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const freshAcct = freshAccounts[alias];
+  if (!freshAcct) return false;
+
+  freshAcct.accessToken = cli.accessToken;
+  freshAcct.refreshToken = cli.refreshToken;
+  if (cli.idToken) freshAcct.idToken = cli.idToken;
+  freshAcct.expiresAt = cli.expiresAt;
+  freshAcct.lastRefresh = new Date().toISOString();
+  freshAcct.authInvalid = false;
+  await Bun.write(storePath, JSON.stringify(freshStore, null, 2));
+
+  const daysLeft = (
+    (cli.expiresAt - Date.now()) /
+    (24 * 60 * 60 * 1000)
+  ).toFixed(1);
+  console.log(
+    `[proactiveRefresh] ${alias}: imported from CLI, expiry in ${daysLeft}d`
+  );
+  return true;
+}
+
 async function refreshSingleCodexToken(
   alias: string,
   account: Record<string, unknown>,
@@ -351,7 +444,8 @@ async function refreshSingleCodexToken(
       console.log(
         `[proactiveRefresh] ${alias}: refresh failed HTTP ${res.status} in ${Date.now() - t0}ms`
       );
-      return false;
+      // Fallback: try importing fresher token from standalone Codex CLI
+      return tryImportFromCodexCli(alias, account, storePath);
     }
 
     const tokens = (await res.json()) as {
