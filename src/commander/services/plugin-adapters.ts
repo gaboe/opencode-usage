@@ -14,13 +14,58 @@ import {
 } from "./config-service.js";
 import type { CommandContext } from "./types.js";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { mkdir } from "node:fs/promises";
 
 const isBun = typeof globalThis.Bun !== "undefined";
 
 // Suppress unused-variable lint — runtime detection guard kept for parity
 void isBun;
 
+// ---------------------------------------------------------------------------
+// Codex store paths — all known locations for codex account data.
+// Commander writes to the first path; plugin CLI reads from the third.
+// After ANY token change, sync to ALL paths to prevent stale-token overwrites.
+// ---------------------------------------------------------------------------
+
+const CODEX_STORE_PATHS = [
+  join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
+  join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
+  join(homedir(), ".config", "oc-codex-multi-account", "accounts.json"),
+];
+
+/** Write codex store content to ALL known store paths. */
+async function syncCodexStoreToAll(content: string): Promise<void> {
+  await Promise.all(
+    CODEX_STORE_PATHS.map(async (p) => {
+      try {
+        await mkdir(dirname(p), { recursive: true });
+        await Bun.write(p, content);
+      } catch {
+        // Best-effort — some paths may not exist yet
+      }
+    })
+  );
+}
+
+/** Read the primary (first) codex store, falling back to alternates. */
+async function readCodexStore(): Promise<{
+  storePath: string;
+  store: Record<string, unknown>;
+} | null> {
+  for (const p of CODEX_STORE_PATHS) {
+    try {
+      const store = JSON.parse(await Bun.file(p).text()) as Record<
+        string,
+        unknown
+      >;
+      return { storePath: p, store };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
 // ---------------------------------------------------------------------------
 // Provider → config source mapping
 // ---------------------------------------------------------------------------
@@ -207,22 +252,9 @@ type CodexPingResult = { status: "ok" | "expired" | "error"; error?: string };
 /** Direct-ping a Codex account: read token from store, call OpenAI API. */
 async function directCodexPing(alias: string): Promise<CodexPingResult> {
   console.log(`[directCodexPing] pinging "${alias}"…`);
-  const STORE_PATHS = [
-    join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
-    join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
-    join(homedir(), ".config", "oc-codex-multi-account", "accounts.json"),
-  ];
-
-  let store: Record<string, unknown> | null = null;
-  for (const p of STORE_PATHS) {
-    try {
-      store = JSON.parse(await Bun.file(p).text()) as Record<string, unknown>;
-      break;
-    } catch {
-      continue;
-    }
-  }
-  if (!store) return { status: "error", error: "No codex store found" };
+  const result = await readCodexStore();
+  if (!result) return { status: "error", error: "No codex store found" };
+  const { store } = result;
 
   console.log(
     `[directCodexPing] found account "${alias}", calling ChatGPT Codex API…`
@@ -289,23 +321,9 @@ async function directCodexPing(alias: string): Promise<CodexPingResult> {
 
 /** Try to directly refresh a single Codex account's access token. */
 async function tryDirectCodexRefresh(alias: string): Promise<boolean> {
-  const STORE_PATHS = [
-    join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
-    join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
-    join(homedir(), ".config", "oc-codex-multi-account", "accounts.json"),
-  ];
-  let storePath: string | null = null;
-  let store: Record<string, unknown> | null = null;
-  for (const p of STORE_PATHS) {
-    try {
-      store = JSON.parse(await Bun.file(p).text()) as Record<string, unknown>;
-      storePath = p;
-      break;
-    } catch {
-      continue;
-    }
-  }
-  if (!store || !storePath) return false;
+  const result = await readCodexStore();
+  if (!result) return false;
+  const { storePath, store } = result;
   const accounts = (store.accounts ?? {}) as Record<
     string,
     Record<string, unknown>
@@ -431,7 +449,9 @@ async function tryImportFromCodexCli(
   freshAcct.expiresAt = cli.expiresAt;
   freshAcct.lastRefresh = new Date().toISOString();
   freshAcct.authInvalid = false;
-  await Bun.write(storePath, JSON.stringify(freshStore, null, 2));
+  const content = JSON.stringify(freshStore, null, 2);
+  await Bun.write(storePath, content);
+  await syncCodexStoreToAll(content);
 
   const daysLeft = (
     (cli.expiresAt - Date.now()) /
@@ -509,7 +529,9 @@ async function refreshSingleCodexToken(
         freshAcct.accountId;
       freshAcct.authInvalid = false;
     }
-    await Bun.write(storePath, JSON.stringify(freshStore, null, 2));
+    const content = JSON.stringify(freshStore, null, 2);
+    await Bun.write(storePath, content);
+    await syncCodexStoreToAll(content);
 
     const daysLeft = ((expiresAt - Date.now()) / (24 * 60 * 60 * 1000)).toFixed(
       1
@@ -544,24 +566,9 @@ export async function proactiveRefreshCodexTokens(): Promise<void> {
 }
 
 async function _proactiveRefreshCodexTokensInner(): Promise<void> {
-  const STORE_PATHS = [
-    join(homedir(), ".config", "opencode", "codex-multi-account-accounts.json"),
-    join(homedir(), ".config", "opencode", "codex-multi-accounts.json"),
-    join(homedir(), ".config", "oc-codex-multi-account", "accounts.json"),
-  ];
-
-  let storePath: string | null = null;
-  let store: Record<string, unknown> | null = null;
-  for (const p of STORE_PATHS) {
-    try {
-      store = JSON.parse(await Bun.file(p).text()) as Record<string, unknown>;
-      storePath = p;
-      break;
-    } catch {
-      continue;
-    }
-  }
-  if (!store || !storePath) return;
+  const result = await readCodexStore();
+  if (!result) return;
+  const { storePath, store } = result;
 
   const accounts = (store.accounts ?? {}) as Record<
     string,
@@ -926,6 +933,10 @@ registerCommand<
           }
           // 2b) Direct refresh failed — fall back to plugin CLI
           ctx.log("info", "Direct refresh failed — trying plugin CLI…");
+          // Sync stores before spawning plugin CLI — ensure it reads fresh tokens
+          const primary = await readCodexStore();
+          if (primary)
+            await syncCodexStoreToAll(JSON.stringify(primary.store, null, 2));
           try {
             const result = await spawnPluginCli("oc-codex-multi-account", [
               "ping",
@@ -1034,6 +1045,12 @@ registerCommand<
   },
   async run(ctx: CommandContext, input) {
     const cliCmd = reauthCliCommand(input.provider);
+    // Sync stores before spawning CLI — ensure plugin reads fresh account data
+    if (input.provider === "codex") {
+      const primary = await readCodexStore();
+      if (primary)
+        await syncCodexStoreToAll(JSON.stringify(primary.store, null, 2));
+    }
     ctx.log("info", `Generating auth URL for ${input.alias}…`);
     const result = await spawnPluginCli(cliCmd, ["reauth", input.alias]);
     const url = String(result.url ?? "");
@@ -1080,6 +1097,12 @@ registerCommand<
   },
   async run(ctx: CommandContext, input) {
     const cliCmd = reauthCliCommand(input.provider);
+    // Sync stores before spawning CLI
+    if (input.provider === "codex") {
+      const primary = await readCodexStore();
+      if (primary)
+        await syncCodexStoreToAll(JSON.stringify(primary.store, null, 2));
+    }
     ctx.log("info", `Completing re-auth for ${input.alias}…`);
     const result = await spawnPluginCli(cliCmd, [
       "reauth",
@@ -1091,6 +1114,14 @@ registerCommand<
     ]);
     const status = String(result.status ?? "error");
     ctx.log("info", `Result: ${status}`);
+
+    // After successful reauth, sync all stores so every path has fresh tokens
+    if (status === "ok" && input.provider === "codex") {
+      const fresh = await readCodexStore();
+      if (fresh)
+        await syncCodexStoreToAll(JSON.stringify(fresh.store, null, 2));
+    }
+
     return {
       status,
       message:
