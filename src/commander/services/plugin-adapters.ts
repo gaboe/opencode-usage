@@ -35,17 +35,75 @@ const CODEX_STORE_PATHS = [
 ];
 
 /** Write codex store content to ALL known store paths. */
-async function syncCodexStoreToAll(content: string): Promise<void> {
+async function writeCodexStoreToAll(content: string): Promise<void> {
   await Promise.all(
     CODEX_STORE_PATHS.map(async (p) => {
       try {
         await mkdir(dirname(p), { recursive: true });
         await Bun.write(p, content);
       } catch {
-        // Best-effort — some paths may not exist yet
+        // Best-effort
       }
     })
   );
+}
+
+/**
+ * Read ALL codex stores, merge accounts (keep freshest per alias), write back.
+ * This is the ONLY correct way to sync — prevents any store from overwriting
+ * fresher tokens written by another process (plugin CLI, standalone CLI, etc.).
+ */
+async function mergeAndSyncCodexStores(): Promise<void> {
+  const stores: Array<Record<string, unknown>> = [];
+  for (const p of CODEX_STORE_PATHS) {
+    try {
+      stores.push(
+        JSON.parse(await Bun.file(p).text()) as Record<string, unknown>
+      );
+    } catch {
+      continue;
+    }
+  }
+  if (stores.length === 0) return;
+
+  // Start with a clone of the first store (preserves activeAlias, etc.)
+  const merged = JSON.parse(JSON.stringify(stores[0])) as Record<
+    string,
+    unknown
+  >;
+  const mergedAccounts = (merged.accounts ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+
+  // Merge accounts from all stores — keep the version with the latest expiresAt
+  for (const data of stores.slice(1)) {
+    const accounts = (data.accounts ?? {}) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    for (const [alias, account] of Object.entries(accounts)) {
+      const existing = mergedAccounts[alias];
+      if (!existing) {
+        mergedAccounts[alias] = account;
+        continue;
+      }
+      const existingExpiry =
+        typeof existing.expiresAt === "number" ? existing.expiresAt : 0;
+      const newExpiry =
+        typeof account.expiresAt === "number" ? account.expiresAt : 0;
+      if (newExpiry > existingExpiry) {
+        mergedAccounts[alias] = account;
+      }
+    }
+  }
+
+  merged.accounts = mergedAccounts;
+  const content = JSON.stringify(merged, null, 2);
+  console.log(
+    `[syncCodexStores] merged ${stores.length} stores, ${Object.keys(mergedAccounts).length} accounts`
+  );
+  await writeCodexStoreToAll(content);
 }
 
 /** Read the primary (first) codex store, falling back to alternates. */
@@ -451,7 +509,7 @@ async function tryImportFromCodexCli(
   freshAcct.authInvalid = false;
   const content = JSON.stringify(freshStore, null, 2);
   await Bun.write(storePath, content);
-  await syncCodexStoreToAll(content);
+  await mergeAndSyncCodexStores();
 
   const daysLeft = (
     (cli.expiresAt - Date.now()) /
@@ -531,7 +589,7 @@ async function refreshSingleCodexToken(
     }
     const content = JSON.stringify(freshStore, null, 2);
     await Bun.write(storePath, content);
-    await syncCodexStoreToAll(content);
+    await mergeAndSyncCodexStores();
 
     const daysLeft = ((expiresAt - Date.now()) / (24 * 60 * 60 * 1000)).toFixed(
       1
@@ -933,10 +991,8 @@ registerCommand<
           }
           // 2b) Direct refresh failed — fall back to plugin CLI
           ctx.log("info", "Direct refresh failed — trying plugin CLI…");
-          // Sync stores before spawning plugin CLI — ensure it reads fresh tokens
-          const primary = await readCodexStore();
-          if (primary)
-            await syncCodexStoreToAll(JSON.stringify(primary.store, null, 2));
+          // Merge all stores before spawning plugin CLI — ensure it reads fresh tokens
+          await mergeAndSyncCodexStores();
           try {
             const result = await spawnPluginCli("oc-codex-multi-account", [
               "ping",
@@ -1047,9 +1103,7 @@ registerCommand<
     const cliCmd = reauthCliCommand(input.provider);
     // Sync stores before spawning CLI — ensure plugin reads fresh account data
     if (input.provider === "codex") {
-      const primary = await readCodexStore();
-      if (primary)
-        await syncCodexStoreToAll(JSON.stringify(primary.store, null, 2));
+      await mergeAndSyncCodexStores();
     }
     ctx.log("info", `Generating auth URL for ${input.alias}…`);
     const result = await spawnPluginCli(cliCmd, ["reauth", input.alias]);
@@ -1099,9 +1153,7 @@ registerCommand<
     const cliCmd = reauthCliCommand(input.provider);
     // Sync stores before spawning CLI
     if (input.provider === "codex") {
-      const primary = await readCodexStore();
-      if (primary)
-        await syncCodexStoreToAll(JSON.stringify(primary.store, null, 2));
+      await mergeAndSyncCodexStores();
     }
     ctx.log("info", `Completing re-auth for ${input.alias}…`);
     const result = await spawnPluginCli(cliCmd, [
@@ -1116,10 +1168,9 @@ registerCommand<
     ctx.log("info", `Result: ${status}`);
 
     // After successful reauth, sync all stores so every path has fresh tokens
+    // After successful reauth, merge all stores — plugin CLI wrote fresh tokens to its own store
     if (status === "ok" && input.provider === "codex") {
-      const fresh = await readCodexStore();
-      if (fresh)
-        await syncCodexStoreToAll(JSON.stringify(fresh.store, null, 2));
+      await mergeAndSyncCodexStores();
     }
 
     return {
