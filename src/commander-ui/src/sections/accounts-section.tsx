@@ -1366,6 +1366,7 @@ function ProviderSection({
   setPingResults: (results: Record<string, PingResult>) => void;
 }) {
   const pingAbort = useRef<AbortController | null>(null);
+  const autoPinged = useRef(false);
 
   async function pollJob(jobId: string): Promise<PingResult> {
     for (let i = 0; i < 30; i++) {
@@ -1433,9 +1434,15 @@ function ProviderSection({
 
     if (ctrl.signal.aborted) return;
     setPingResults(Object.fromEntries(entries));
-    // Delay refresh so user sees PONG/FAIL badges before data reloads
     setTimeout(onRefresh, 1500);
   }
+
+  useEffect(() => {
+    if (!autoPinged.current && prov.accounts.length > 0) {
+      autoPinged.current = true;
+      handlePingAll();
+    }
+  }, [prov.accounts.length]);
 
   return (
     <div className="space-y-2">

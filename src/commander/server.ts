@@ -28,6 +28,7 @@ import {
   rollbackConfig,
   isValidSource,
   ConfigError,
+  type ConfigSource,
 } from "./services/config-service.js";
 
 const isBun = typeof globalThis.Bun !== "undefined";
@@ -94,6 +95,65 @@ async function queryUsage(
     };
     worker.postMessage(opts);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Startup ping — verify all accounts & clear stale metrics at launch
+// ---------------------------------------------------------------------------
+
+const PING_PROVIDERS: Array<{ provider: string; source: ConfigSource }> = [
+  { provider: "anthropic", source: "anthropic-multi-account-state" },
+  { provider: "codex", source: "codex-multi-account-accounts" },
+  { provider: "antigravity", source: "antigravity-accounts" },
+];
+
+function pingAllAccounts(): void {
+  for (const { provider, source } of PING_PROVIDERS) {
+    try {
+      const data = readConfig(source) as Record<string, unknown>;
+      let aliases: string[];
+
+      if (provider === "antigravity") {
+        const accounts = Array.isArray(data.accounts)
+          ? (data.accounts as Array<Record<string, unknown>>)
+          : [];
+        aliases = accounts
+          .map((a) => (typeof a.email === "string" ? a.email : ""))
+          .filter(Boolean);
+      } else if (provider === "anthropic") {
+        const usage =
+          data.usage && typeof data.usage === "object"
+            ? (data.usage as Record<string, unknown>)
+            : {};
+        aliases = Object.keys(usage);
+      } else {
+        // codex — accounts keyed by alias
+        const accounts =
+          data.accounts && typeof data.accounts === "object"
+            ? (data.accounts as Record<string, unknown>)
+            : {};
+        aliases = Object.keys(accounts);
+      }
+
+      for (const alias of aliases) {
+        try {
+          runCommand("accounts.ping", { provider, alias });
+        } catch (err) {
+          console.log(
+            `[startup-ping] ${provider}/${alias}: failed to queue — ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+
+      if (aliases.length > 0) {
+        console.log(
+          `[startup-ping] queued ${aliases.length} ping(s) for ${provider}`
+        );
+      }
+    } catch {
+      // Config not found — skip this provider
+    }
+  }
 }
 
 export async function runCommanderServer(args: CliArgs): Promise<void> {
@@ -413,6 +473,8 @@ export async function runCommanderServer(args: CliArgs): Promise<void> {
 
   // Proactive token refresh — keeps Codex tokens fresh (background, non-blocking)
   proactiveRefreshCodexTokens().catch(() => {});
+
+  pingAllAccounts();
 
   if (isBun && !process.env.NO_OPEN) {
     const cmd =
