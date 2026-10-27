@@ -207,6 +207,8 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     stdin.on("data", async (key: string) => {
       if (key === "\u0003") {
         clearInterval(intervalId);
+        stdin.setRawMode(false);
+        stdin.pause();
         clearScreen();
         process.exit(0);
       }

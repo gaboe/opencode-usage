@@ -764,6 +764,11 @@ function Dashboard(props: DashboardProps) {
   useKeyboard((key) => {
     const keyName = key.name?.toLowerCase() || key.sequence;
 
+    // Handle Ctrl+C explicitly to ensure clean exit
+    if (keyName === "c" && key.ctrl) {
+      process.exit(0);
+    }
+
     if (keyName === "t") {
       setDaysFilter(1);
       setPageOffset(0);
