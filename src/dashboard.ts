@@ -199,6 +199,8 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     console.log(statusBar);
   };
 
+  let intervalId: ReturnType<typeof setInterval> | undefined;
+
   if (stdin.isTTY) {
     stdin.setRawMode(true);
     stdin.resume();
@@ -206,7 +208,11 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
 
     stdin.on("data", async (key: string) => {
       if (key === "\u0003") {
-        clearInterval(intervalId);
+        if (intervalId !== undefined) {
+          clearInterval(intervalId);
+        }
+        stdin.setRawMode(false);
+        stdin.pause();
         clearScreen();
         process.exit(0);
       }
@@ -235,12 +241,14 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
 
   await render();
 
-  const intervalId = setInterval(async () => {
+  intervalId = setInterval(async () => {
     await render();
   }, refreshInterval * 1000);
 
   process.on("SIGINT", () => {
-    clearInterval(intervalId);
+    if (intervalId !== undefined) {
+      clearInterval(intervalId);
+    }
     clearScreen();
     if (stdin.isTTY) {
       stdin.setRawMode(false);

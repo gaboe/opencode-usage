@@ -1,5 +1,5 @@
 import { render, useKeyboard, useTerminalDimensions } from "@opentui/solid";
-import { createSignal, onMount, For, Show } from "solid-js";
+import { createSignal, onMount, onCleanup, For, Show } from "solid-js";
 import type {
   DailyStats,
   QuotaSnapshot,
@@ -135,7 +135,7 @@ function UsageTable(props: {
     let totalTokens = 0;
     let totalCost = 0;
 
-    windowedData.forEach(([_, stat]) => {
+    windowedData.forEach(([, stat]) => {
       totalTokens += stat.input + stat.output;
       totalCost += stat.cost;
     });
@@ -758,11 +758,14 @@ function Dashboard(props: DashboardProps) {
       (props.refreshInterval ?? 300) * 1000
     );
 
-    return () => clearInterval(intervalId);
+    onCleanup(() => clearInterval(intervalId));
   });
 
   useKeyboard((key) => {
     const keyName = key.name?.toLowerCase() || key.sequence;
+
+    // Ctrl+C is handled by the renderer's exitOnCtrlC option, which
+    // destroys the renderer before exiting so the terminal is restored.
 
     if (keyName === "t") {
       setDaysFilter(1);

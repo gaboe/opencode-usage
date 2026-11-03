@@ -164,7 +164,13 @@ async function main(): Promise<void> {
     clearScreen();
     await doRefresh();
 
-    setInterval(doRefresh, WATCH_INTERVAL_MS);
+    const intervalId = setInterval(doRefresh, WATCH_INTERVAL_MS);
+
+    process.on("SIGINT", () => {
+      clearInterval(intervalId);
+      console.log("\nWatch mode stopped.");
+      process.exit(0);
+    });
   } else {
     const messages = await loadMessages(storagePath, provider);
     await renderUsage(options, messages);
