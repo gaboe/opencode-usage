@@ -20,8 +20,19 @@ const legacyMultiAccountPath = join(
   "opencode",
   "multi-account-state.json"
 );
-const testDir = join(homedir(), ".local/share");
-const antigravityPath = join(testDir, "opencode-antigravity/accounts.json");
+const antigravityPath = join(
+  homedir(),
+  ".config",
+  "opencode",
+  "antigravity-accounts.json"
+);
+const legacyAntigravityPath = join(
+  homedir(),
+  ".local",
+  "share",
+  "opencode-antigravity",
+  "accounts.json"
+);
 
 async function setupTestFile(path: string, data: unknown) {
   const dir = path.substring(0, path.lastIndexOf("/"));
@@ -156,6 +167,48 @@ describe("quota-loader", () => {
   describe("loadAntigravityQuota", () => {
     afterEach(async () => {
       await cleanupTestFile(antigravityPath);
+      await cleanupTestFile(legacyAntigravityPath);
+    });
+
+    const accountWithClaudeQuota = (
+      email: string,
+      remainingFraction: number
+    ) => ({
+      accounts: [
+        {
+          email,
+          cachedQuota: {
+            claude: { remainingFraction, resetTime: "2026-01-01T00:00:00Z" },
+          },
+        },
+      ],
+    });
+
+    it("falls back to the legacy accounts path", async () => {
+      await setupTestFile(
+        legacyAntigravityPath,
+        accountWithClaudeQuota("legacy@example.com", 0.4)
+      );
+      const result = await loadAntigravityQuota();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].label).toBe("legacy@example.com - Claude");
+      expect(result[0].used).toBeCloseTo(0.6);
+    });
+
+    it("prefers the config path over the legacy path", async () => {
+      await setupTestFile(
+        antigravityPath,
+        accountWithClaudeQuota("current@example.com", 0.9)
+      );
+      await setupTestFile(
+        legacyAntigravityPath,
+        accountWithClaudeQuota("legacy@example.com", 0.4)
+      );
+      const result = await loadAntigravityQuota();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].label).toBe("current@example.com - Claude");
     });
 
     it("loads quota from antigravity accounts file", async () => {
@@ -339,6 +392,7 @@ describe("quota-loader", () => {
 
     it("returns error snapshot when file is missing", async () => {
       await cleanupTestFile(antigravityPath);
+      await cleanupTestFile(legacyAntigravityPath);
       const result = await loadAntigravityQuota();
 
       expect(result).toHaveLength(1);
