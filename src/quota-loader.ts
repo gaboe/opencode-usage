@@ -17,6 +17,14 @@ const ANTHROPIC_MULTI_ACCOUNT_STATE_LEGACY_PATH = join(
   homedir(),
   ".local/share/opencode/multi-account-state.json"
 );
+const ANTIGRAVITY_ACCOUNTS_PATH = join(
+  homedir(),
+  ".config/opencode/antigravity-accounts.json"
+);
+const ANTIGRAVITY_ACCOUNTS_LEGACY_PATH = join(
+  homedir(),
+  ".local/share/opencode-antigravity/accounts.json"
+);
 
 /**
  * Helper to read JSON file (dual runtime support)
@@ -143,12 +151,15 @@ export async function loadMultiAccountThresholds(): Promise<MultiAccountThreshol
 
 /**
  * Load quota from antigravity accounts file
- * Path: ~/.config/opencode/antigravity-accounts.json
+ * Paths: ~/.config/opencode/antigravity-accounts.json (preferred)
+ *        ~/.local/share/opencode-antigravity/accounts.json (legacy)
  * Note: remainingFraction is inverted (0 = exhausted, 1 = full)
  */
 export async function loadAntigravityQuota(): Promise<QuotaSnapshot[]> {
-  const path = join(homedir(), ".config/opencode/antigravity-accounts.json");
-  const data = await readJsonFile<AntigravityAccountsFile>(path);
+  const data = await readJsonFileFromPaths<AntigravityAccountsFile>([
+    ANTIGRAVITY_ACCOUNTS_PATH,
+    ANTIGRAVITY_ACCOUNTS_LEGACY_PATH,
+  ]);
 
   if (!data?.accounts?.length) {
     return [
