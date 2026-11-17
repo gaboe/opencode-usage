@@ -82,7 +82,10 @@ export function filterByDays(
   days: number
 ): Map<string, DailyStats> {
   const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - days + 1);
+  // "Last N days" includes today: days=1 is today only, days=7 is today and
+  // the previous 6 days. A days value of 0 is treated like 1 (today only),
+  // matching how the callers use it as a "days back from today" count.
+  cutoffDate.setDate(cutoffDate.getDate() - Math.max(days, 1) + 1);
   const cutoffStr = cutoffDate.toISOString().split("T")[0];
 
   const filtered = new Map<string, DailyStats>();

@@ -198,6 +198,31 @@ describe("aggregator", () => {
       expect(result.size).toBeGreaterThanOrEqual(1);
       expect(result.has(todayStr)).toBe(true);
     });
+
+    test("last N days includes today and excludes older dates", () => {
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const threeDaysAgo = new Date(today);
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+      const todayStr = today.toISOString().split("T")[0];
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+      const threeDaysAgoStr = threeDaysAgo.toISOString().split("T")[0];
+
+      const dailyStats = new Map<string, DailyStats>([
+        [todayStr, createDailyStats(todayStr)],
+        [yesterdayStr, createDailyStats(yesterdayStr)],
+        [threeDaysAgoStr, createDailyStats(threeDaysAgoStr)],
+      ]);
+
+      const result = filterByDays(dailyStats, 2);
+
+      expect(result.size).toBe(2);
+      expect(result.has(todayStr)).toBe(true);
+      expect(result.has(yesterdayStr)).toBe(true);
+      expect(result.has(threeDaysAgoStr)).toBe(false);
+    });
   });
 
   describe("filterByDateRange", () => {
