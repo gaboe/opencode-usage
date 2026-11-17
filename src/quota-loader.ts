@@ -50,11 +50,19 @@ async function readJsonFileFromPaths<T>(
   return null;
 }
 
-export async function loadMultiAccountQuota(): Promise<QuotaSnapshot[]> {
-  const state = await readJsonFileFromPaths<MultiAccountState>([
-    ANTHROPIC_MULTI_ACCOUNT_STATE_PATH,
-    ANTHROPIC_MULTI_ACCOUNT_STATE_LEGACY_PATH,
-  ]);
+const MULTI_ACCOUNT_STATE_PATHS = [
+  ANTHROPIC_MULTI_ACCOUNT_STATE_PATH,
+  ANTHROPIC_MULTI_ACCOUNT_STATE_LEGACY_PATH,
+];
+const ANTIGRAVITY_ACCOUNTS_PATHS = [
+  ANTIGRAVITY_ACCOUNTS_PATH,
+  ANTIGRAVITY_ACCOUNTS_LEGACY_PATH,
+];
+
+export async function loadMultiAccountQuota(
+  statePaths: string[] = MULTI_ACCOUNT_STATE_PATHS
+): Promise<QuotaSnapshot[]> {
+  const state = await readJsonFileFromPaths<MultiAccountState>(statePaths);
 
   if (!state?.usage) {
     return [
@@ -139,11 +147,10 @@ function normalizeThresholds(
   };
 }
 
-export async function loadMultiAccountThresholds(): Promise<MultiAccountThresholds | null> {
-  const state = await readJsonFileFromPaths<MultiAccountState>([
-    ANTHROPIC_MULTI_ACCOUNT_STATE_PATH,
-    ANTHROPIC_MULTI_ACCOUNT_STATE_LEGACY_PATH,
-  ]);
+export async function loadMultiAccountThresholds(
+  statePaths: string[] = MULTI_ACCOUNT_STATE_PATHS
+): Promise<MultiAccountThresholds | null> {
+  const state = await readJsonFileFromPaths<MultiAccountState>(statePaths);
   if (!state) return null;
 
   return normalizeThresholds(state.config?.threshold);
@@ -155,11 +162,11 @@ export async function loadMultiAccountThresholds(): Promise<MultiAccountThreshol
  *        ~/.local/share/opencode-antigravity/accounts.json (legacy)
  * Note: remainingFraction is inverted (0 = exhausted, 1 = full)
  */
-export async function loadAntigravityQuota(): Promise<QuotaSnapshot[]> {
-  const data = await readJsonFileFromPaths<AntigravityAccountsFile>([
-    ANTIGRAVITY_ACCOUNTS_PATH,
-    ANTIGRAVITY_ACCOUNTS_LEGACY_PATH,
-  ]);
+export async function loadAntigravityQuota(
+  accountsPaths: string[] = ANTIGRAVITY_ACCOUNTS_PATHS
+): Promise<QuotaSnapshot[]> {
+  const data =
+    await readJsonFileFromPaths<AntigravityAccountsFile>(accountsPaths);
 
   if (!data?.accounts?.length) {
     return [
