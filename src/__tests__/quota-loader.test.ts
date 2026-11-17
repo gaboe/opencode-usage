@@ -1,27 +1,24 @@
-import { describe, it, expect, afterEach } from "bun:test";
+import { describe, it, expect, afterEach, afterAll } from "bun:test";
 import {
   loadMultiAccountQuota,
   loadAntigravityQuota,
 } from "../quota-loader.js";
 import { join } from "node:path";
-import { mkdir, writeFile, rm } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
-const multiAccountPath = join(
-  homedir(),
-  ".config",
-  "opencode",
-  "anthropic-multi-account-state.json"
-);
-const legacyMultiAccountPath = join(
-  homedir(),
-  ".local",
-  "share",
-  "opencode",
-  "multi-account-state.json"
-);
-const testDir = join(homedir(), ".local/share");
-const antigravityPath = join(testDir, "opencode-antigravity/accounts.json");
+// Fixtures live in a temp dir so tests never touch the user's real files.
+const testRoot = await mkdtemp(join(tmpdir(), "opencode-usage-quota-"));
+const multiAccountPath = join(testRoot, "anthropic-multi-account-state.json");
+const legacyMultiAccountPath = join(testRoot, "multi-account-state.json");
+const multiAccountPaths = [multiAccountPath, legacyMultiAccountPath];
+const antigravityPath = join(testRoot, "antigravity-accounts.json");
+const legacyAntigravityPath = join(testRoot, "legacy", "accounts.json");
+const antigravityPaths = [antigravityPath, legacyAntigravityPath];
+
+afterAll(async () => {
+  await rm(testRoot, { recursive: true, force: true });
+});
 
 async function setupTestFile(path: string, data: unknown) {
   const dir = path.substring(0, path.lastIndexOf("/"));
@@ -59,7 +56,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(multiAccountPath, testData);
-      const result = await loadMultiAccountQuota();
+      const result = await loadMultiAccountQuota(multiAccountPaths);
 
       expect(result).toHaveLength(3);
       expect(result[0]).toEqual({
@@ -96,7 +93,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(multiAccountPath, testData);
-      const result = await loadMultiAccountQuota();
+      const result = await loadMultiAccountQuota(multiAccountPaths);
 
       const activeLabel = result.find((r) => r.label.includes("[ACTIVE]"));
       const inactiveLabel = result.find((r) => !r.label.includes("[ACTIVE]"));
@@ -108,7 +105,7 @@ describe("quota-loader", () => {
 
     it("returns error snapshot when file is missing", async () => {
       await cleanupTestFile(multiAccountPath);
-      const result = await loadMultiAccountQuota();
+      const result = await loadMultiAccountQuota(multiAccountPaths);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -123,7 +120,7 @@ describe("quota-loader", () => {
       const testData = { currentAccount: "account1", usage: {} };
 
       await setupTestFile(multiAccountPath, testData);
-      const result = await loadMultiAccountQuota();
+      const result = await loadMultiAccountQuota(multiAccountPaths);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -146,7 +143,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(multiAccountPath, testData);
-      const result = await loadMultiAccountQuota();
+      const result = await loadMultiAccountQuota(multiAccountPaths);
 
       expect(result).toHaveLength(1);
       expect(result[0].label).toContain("Session 5h");
@@ -156,6 +153,48 @@ describe("quota-loader", () => {
   describe("loadAntigravityQuota", () => {
     afterEach(async () => {
       await cleanupTestFile(antigravityPath);
+      await cleanupTestFile(legacyAntigravityPath);
+    });
+
+    const accountWithClaudeQuota = (
+      email: string,
+      remainingFraction: number
+    ) => ({
+      accounts: [
+        {
+          email,
+          cachedQuota: {
+            claude: { remainingFraction, resetTime: "2026-01-01T00:00:00Z" },
+          },
+        },
+      ],
+    });
+
+    it("falls back to the legacy accounts path", async () => {
+      await setupTestFile(
+        legacyAntigravityPath,
+        accountWithClaudeQuota("legacy@example.com", 0.4)
+      );
+      const result = await loadAntigravityQuota(antigravityPaths);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].label).toBe("legacy@example.com - Claude");
+      expect(result[0].used).toBeCloseTo(0.6);
+    });
+
+    it("prefers the config path over the legacy path", async () => {
+      await setupTestFile(
+        antigravityPath,
+        accountWithClaudeQuota("current@example.com", 0.9)
+      );
+      await setupTestFile(
+        legacyAntigravityPath,
+        accountWithClaudeQuota("legacy@example.com", 0.4)
+      );
+      const result = await loadAntigravityQuota(antigravityPaths);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].label).toBe("current@example.com - Claude");
     });
 
     it("loads quota from antigravity accounts file", async () => {
@@ -187,7 +226,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result).toHaveLength(3);
       expect(result[0]).toEqual({
@@ -226,7 +265,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result[0].used).toBe(0.75); // 1 - 0.25
     });
@@ -247,7 +286,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result[0]).toEqual({
         source: "antigravity",
@@ -284,7 +323,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result).toHaveLength(1);
       expect(result[0].label).toContain("active@example.com");
@@ -310,7 +349,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result).toHaveLength(1);
       expect(result[0].label).toContain("with-quota@example.com");
@@ -332,14 +371,15 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result[0].label).toBe("Account - Claude");
     });
 
     it("returns error snapshot when file is missing", async () => {
       await cleanupTestFile(antigravityPath);
-      const result = await loadAntigravityQuota();
+      await cleanupTestFile(legacyAntigravityPath);
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -354,7 +394,7 @@ describe("quota-loader", () => {
       const testData = { accounts: [] };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -382,7 +422,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       expect(result).toHaveLength(1);
       expect(result[0].label).toContain("Claude");
@@ -404,7 +444,7 @@ describe("quota-loader", () => {
       };
 
       await setupTestFile(antigravityPath, testData);
-      const result = await loadAntigravityQuota();
+      const result = await loadAntigravityQuota(antigravityPaths);
 
       const expectedTimestamp = Math.floor(
         Date.parse("2025-02-12T12:30:45Z") / 1000
